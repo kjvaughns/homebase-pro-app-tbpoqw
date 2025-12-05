@@ -1,0 +1,135 @@
+
+import { Provider, Service, Booking, Invoice } from '@/types';
+
+export const mockProviders: Provider[] = [
+  {
+    id: '1',
+    userId: 'p1',
+    businessName: 'Elite Handyman Services',
+    description: 'Professional handyman services for all your home repair needs. 15+ years of experience.',
+    services: [],
+    rating: 4.8,
+    reviewCount: 127,
+    location: 'San Francisco, CA',
+    verified: true,
+    slug: 'elite-handyman',
+  },
+  {
+    id: '2',
+    userId: 'p2',
+    businessName: 'GreenScape Lawn Care',
+    description: 'Expert lawn care and landscaping services. Transform your outdoor space.',
+    services: [],
+    rating: 4.9,
+    reviewCount: 203,
+    location: 'San Francisco, CA',
+    verified: true,
+    slug: 'greenscape-lawn',
+  },
+  {
+    id: '3',
+    userId: 'p3',
+    businessName: 'CoolAir HVAC',
+    description: 'Licensed HVAC technicians. Installation, repair, and maintenance.',
+    services: [],
+    rating: 4.7,
+    reviewCount: 89,
+    location: 'San Francisco, CA',
+    verified: true,
+    slug: 'coolair-hvac',
+  },
+  {
+    id: '4',
+    userId: 'p4',
+    businessName: 'FlowMaster Plumbing',
+    description: '24/7 emergency plumbing services. No job too big or small.',
+    services: [],
+    rating: 4.6,
+    reviewCount: 156,
+    location: 'San Francisco, CA',
+    verified: true,
+    slug: 'flowmaster-plumbing',
+  },
+];
+
+export const mockServices: Service[] = [
+  {
+    id: 's1',
+    providerId: '1',
+    name: 'General Repairs',
+    description: 'Fix doors, windows, drywall, and more',
+    price: 85,
+    duration: 60,
+    category: 'handyman',
+  },
+  {
+    id: 's2',
+    providerId: '2',
+    name: 'Lawn Mowing',
+    description: 'Professional lawn mowing and edging',
+    price: 60,
+    duration: 45,
+    category: 'lawn-care',
+  },
+  {
+    id: 's3',
+    providerId: '3',
+    name: 'AC Maintenance',
+    description: 'Complete AC system inspection and tune-up',
+    price: 150,
+    duration: 90,
+    category: 'hvac',
+  },
+  {
+    id: 's4',
+    providerId: '4',
+    name: 'Drain Cleaning',
+    description: 'Clear clogged drains and pipes',
+    price: 120,
+    duration: 60,
+    category: 'plumbing',
+  },
+];
+
+export const mockBookings: Booking[] = [
+  {
+    id: 'b1',
+    providerId: '1',
+    homeownerId: 'h1',
+    serviceId: 's1',
+    date: new Date(2025, 0, 15),
+    time: '10:00 AM',
+    status: 'confirmed',
+    address: '123 Main St, San Francisco, CA',
+    price: 85,
+  },
+  {
+    id: 'b2',
+    providerId: '2',
+    homeownerId: 'h1',
+    serviceId: 's2',
+    date: new Date(2025, 0, 18),
+    time: '2:00 PM',
+    status: 'pending',
+    address: '123 Main St, San Francisco, CA',
+    price: 60,
+  },
+];
+
+export const mockInvoices: Invoice[] = [
+  {
+    id: 'i1',
+    bookingId: 'b1',
+    amount: 85,
+    status: 'unpaid',
+    dueDate: new Date(2025, 0, 20),
+  },
+  {
+    id: 'i2',
+    bookingId: 'b2',
+    amount: 60,
+    status: 'paid',
+    dueDate: new Date(2025, 0, 10),
+    paidDate: new Date(2025, 0, 8),
+  },
+];
