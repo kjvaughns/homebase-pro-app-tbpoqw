@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
@@ -24,11 +24,7 @@ export default function HomeDetailScreen() {
   const [home, setHome] = useState<Home | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchHome();
-  }, [id]);
-
-  const fetchHome = async () => {
+  const fetchHome = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('homes')
@@ -44,7 +40,11 @@ export default function HomeDetailScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    fetchHome();
+  }, [fetchHome]);
 
   if (loading) {
     return (

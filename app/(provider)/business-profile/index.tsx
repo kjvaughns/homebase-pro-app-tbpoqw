@@ -54,7 +54,7 @@ interface BusinessProfile {
     saturday?: { open: string; close: string; closed?: boolean };
     sunday?: { open: string; close: string; closed?: boolean };
   };
-  photos?: Array<{ url: string; title?: string; category?: string }>;
+  photos?: { url: string; title?: string; category?: string }[];
   services_visible?: boolean;
   is_published?: boolean;
 }
@@ -82,32 +82,7 @@ export default function BusinessProfileEditor() {
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef<string>('');
 
-  useEffect(() => {
-    loadProfile();
-    
-    return () => {
-      if (autosaveTimerRef.current) {
-        clearTimeout(autosaveTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const currentState = JSON.stringify(profile);
-    if (currentState !== lastSavedRef.current && lastSavedRef.current !== '') {
-      setHasUnsavedChanges(true);
-      
-      if (autosaveTimerRef.current) {
-        clearTimeout(autosaveTimerRef.current);
-      }
-      
-      autosaveTimerRef.current = setTimeout(() => {
-        handleSave(true);
-      }, 2000);
-    }
-  }, [profile]);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -174,9 +149,9 @@ export default function BusinessProfileEditor() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router, showToast]);
 
-  const handleSave = async (isAutosave = false) => {
+  const handleSave = useCallback(async (isAutosave = false) => {
     if (!organizationId) return;
     
     setSaving(true);
@@ -219,7 +194,32 @@ export default function BusinessProfileEditor() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [organizationId, profile, showToast]);
+
+  useEffect(() => {
+    loadProfile();
+    
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, [loadProfile]);
+
+  useEffect(() => {
+    const currentState = JSON.stringify(profile);
+    if (currentState !== lastSavedRef.current && lastSavedRef.current !== '') {
+      setHasUnsavedChanges(true);
+      
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      
+      autosaveTimerRef.current = setTimeout(() => {
+        handleSave(true);
+      }, 2000);
+    }
+  }, [profile, handleSave]);
 
   const checkSlugAvailability = async (slug: string) => {
     if (!slug) {
