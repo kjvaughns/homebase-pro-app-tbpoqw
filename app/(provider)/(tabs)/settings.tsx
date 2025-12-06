@@ -106,7 +106,7 @@ export default function MoreScreen() {
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Business</Text>
-          <TouchableOpacity onPress={() => router.push('/(provider)/business-profile/index' as any)}>
+          <TouchableOpacity onPress={() => router.push('/(provider)/business-profile/')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
                 <IconSymbol ios_icon_name="building.2.fill" android_material_icon_name="business" size={24} color={colors.primary} />
@@ -125,7 +125,7 @@ export default function MoreScreen() {
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) }] }}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Money</Text>
-          <TouchableOpacity onPress={() => router.push('/(provider)/money-home/index' as any)}>
+          <TouchableOpacity onPress={() => router.push('/(provider)/money-home/')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
                 <IconSymbol ios_icon_name="dollarsign.circle.fill" android_material_icon_name="attach-money" size={24} color={colors.primary} />
@@ -144,7 +144,7 @@ export default function MoreScreen() {
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }) }] }}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Billing</Text>
-          <TouchableOpacity onPress={() => router.push('/(provider)/billing/index' as any)}>
+          <TouchableOpacity onPress={() => router.push('/(provider)/billing/')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
                 <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="receipt" size={24} color={colors.primary} />
@@ -163,7 +163,7 @@ export default function MoreScreen() {
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [70, 0] }) }] }}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Integrations</Text>
-          <TouchableOpacity onPress={() => router.push('/(provider)/integrations/index' as any)}>
+          <TouchableOpacity onPress={() => router.push('/(provider)/integrations/')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
                 <IconSymbol ios_icon_name="app.connected.to.app.below.fill" android_material_icon_name="extension" size={24} color={colors.primary} />
@@ -182,7 +182,7 @@ export default function MoreScreen() {
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }] }}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notifications</Text>
-          <TouchableOpacity onPress={() => router.push('/(provider)/notifications/index' as any)}>
+          <TouchableOpacity onPress={() => router.push('/(provider)/notifications/')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
                 <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={24} color={colors.primary} />
@@ -201,7 +201,7 @@ export default function MoreScreen() {
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [90, 0] }) }] }}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About & Legal</Text>
-          <TouchableOpacity onPress={() => router.push('/(provider)/support/index' as any)}>
+          <TouchableOpacity onPress={() => router.push('/(provider)/support/')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
                 <IconSymbol ios_icon_name="questionmark.circle.fill" android_material_icon_name="help" size={24} color={colors.primary} />

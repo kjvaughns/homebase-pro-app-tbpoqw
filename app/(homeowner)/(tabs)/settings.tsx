@@ -126,7 +126,7 @@ export default function HomeownerSettings() {
           </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/(homeowner)/my-providers')}>
+        <TouchableOpacity onPress={() => router.push('/(homeowner)/my-providers/')}>
           <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="star.fill"
@@ -144,7 +144,7 @@ export default function HomeownerSettings() {
           </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/(homeowner)/subscriptions')}>
+        <TouchableOpacity onPress={() => router.push('/(homeowner)/subscriptions/')}>
           <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="repeat"
@@ -162,7 +162,7 @@ export default function HomeownerSettings() {
           </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/(homeowner)/payment-methods')}>
+        <TouchableOpacity onPress={() => router.push('/(homeowner)/payment-methods/')}>
           <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="creditcard.fill"
@@ -183,7 +183,7 @@ export default function HomeownerSettings() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Preferences</Text>
-        <TouchableOpacity onPress={() => router.push('/(homeowner)/notifications')}>
+        <TouchableOpacity onPress={() => router.push('/(homeowner)/notifications/')}>
           <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="bell.fill"
