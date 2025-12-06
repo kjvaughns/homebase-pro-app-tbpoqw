@@ -1,11 +1,13 @@
 
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
+
+const HOMEBASE_LOGO = require('@/assets/images/6136aa2f-9e1a-404d-8c64-88ff07e19023.png');
 
 export default function WelcomeScreen() {
   const { isAuthenticated, user, loading } = useAuth();
@@ -33,14 +35,11 @@ export default function WelcomeScreen() {
           end={{ x: 1, y: 1 }}
         />
         <View style={styles.logoContainer}>
-          <View style={styles.logo}>
-            <IconSymbol
-              ios_icon_name="house.fill"
-              android_material_icon_name="home"
-              size={64}
-              color={colors.primary}
-            />
-          </View>
+          <Image
+            source={HOMEBASE_LOGO}
+            style={styles.logoLarge}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>HomeBase Pro</Text>
         </View>
       </View>
@@ -58,14 +57,11 @@ export default function WelcomeScreen() {
       
       <View style={styles.content}>
         <View style={styles.logoContainer}>
-          <View style={styles.logo}>
-            <IconSymbol
-              ios_icon_name="house.fill"
-              android_material_icon_name="home"
-              size={64}
-              color={colors.primary}
-            />
-          </View>
+          <Image
+            source={HOMEBASE_LOGO}
+            style={styles.logoLarge}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>HomeBase Pro</Text>
           <Text style={styles.tagline}>
             Connect with trusted service providers for all your home needs
@@ -136,15 +132,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 48,
   },
-  logo: {
-    width: 120,
-    height: 120,
-    borderRadius: 30,
-    backgroundColor: colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoLarge: {
+    width: 150,
+    height: 150,
     marginBottom: 24,
-    boxShadow: '0px 8px 24px rgba(15, 175, 110, 0.3)',
   },
   title: {
     fontSize: 42,

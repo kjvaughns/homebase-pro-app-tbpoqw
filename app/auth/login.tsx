@@ -7,6 +7,8 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { LinearGradient } from 'expo-linear-gradient';
 
+const HOMEBASE_LOGO = require('@/assets/images/6136aa2f-9e1a-404d-8c64-88ff07e19023.png');
+
 export default function LoginScreen() {
   const { login, profile } = useAuth();
   
@@ -67,14 +69,11 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.logoContainer}>
-          <View style={styles.logo}>
-            <IconSymbol
-              ios_icon_name="house.fill"
-              android_material_icon_name="home"
-              size={48}
-              color={colors.primary}
-            />
-          </View>
+          <Image
+            source={HOMEBASE_LOGO}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.brandTitle}>HomeBase Pro</Text>
         </View>
 
@@ -152,14 +151,9 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-    backgroundColor: colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 120,
+    height: 120,
     marginBottom: 16,
-    boxShadow: '0px 8px 24px rgba(15, 175, 110, 0.3)',
   },
   brandTitle: {
     fontSize: 28,

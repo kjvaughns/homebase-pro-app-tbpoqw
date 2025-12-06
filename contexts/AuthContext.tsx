@@ -121,13 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Login error:', error);
         
         // Show user-friendly error messages
-        if (error.message.includes('Email not confirmed')) {
-          Alert.alert(
-            'Email Not Confirmed',
-            'Please check your email and click the confirmation link before signing in.',
-            [{ text: 'OK' }]
-          );
-        } else if (error.message.includes('Invalid login credentials')) {
+        if (error.message.includes('Invalid login credentials')) {
           Alert.alert(
             'Invalid Credentials',
             'The email or password you entered is incorrect. Please try again.',
@@ -164,11 +158,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('Attempting signup for:', email, 'as', role);
       
+      // Sign up the user - no email confirmation required
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: 'https://natively.dev/email-confirmed',
           data: {
             name,
             role,
@@ -219,10 +213,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Show email confirmation alert
+        // Show success alert
         Alert.alert(
           'Account Created!',
-          'Please check your email and click the confirmation link to verify your account before signing in.',
+          'Your account has been created successfully. You can now sign in.',
           [{ text: 'OK' }]
         );
 

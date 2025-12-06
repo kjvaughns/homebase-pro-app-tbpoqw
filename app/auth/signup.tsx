@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -8,9 +8,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types';
 import { LinearGradient } from 'expo-linear-gradient';
 
+const HOMEBASE_LOGO = require('@/assets/images/6136aa2f-9e1a-404d-8c64-88ff07e19023.png');
+
 export default function SignupScreen() {
   const { role } = useLocalSearchParams<{ role: UserRole }>();
-  const { signup } = useAuth();
+  const { signup, profile } = useAuth();
   
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -27,8 +29,14 @@ export default function SignupScreen() {
     try {
       await signup(email, password, name, role || 'homeowner');
       
-      // Don't auto-navigate - user needs to confirm email first
-      // The alert in AuthContext will inform them
+      // Navigate to appropriate dashboard after successful signup
+      setTimeout(() => {
+        if (profile?.role === 'provider' || role === 'provider') {
+          router.replace('/(provider)/(tabs)');
+        } else {
+          router.replace('/(homeowner)/(tabs)');
+        }
+      }, 500);
     } catch (error) {
       console.error('Signup error:', error);
     } finally {
@@ -64,14 +72,11 @@ export default function SignupScreen() {
         </View>
 
         <View style={styles.logoContainer}>
-          <View style={styles.logo}>
-            <IconSymbol
-              ios_icon_name="house.fill"
-              android_material_icon_name="home"
-              size={48}
-              color={colors.primary}
-            />
-          </View>
+          <Image
+            source={HOMEBASE_LOGO}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.brandTitle}>HomeBase Pro</Text>
         </View>
 
@@ -164,14 +169,9 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-    backgroundColor: colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 120,
+    height: 120,
     marginBottom: 16,
-    boxShadow: '0px 8px 24px rgba(15, 175, 110, 0.3)',
   },
   brandTitle: {
     fontSize: 28,
