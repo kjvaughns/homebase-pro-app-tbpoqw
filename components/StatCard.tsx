@@ -1,8 +1,9 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, commonStyles } from '@/styles/commonStyles';
+import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
+import { GlassView } from './GlassView';
 
 interface StatCardProps {
   title: string;
@@ -13,25 +14,30 @@ interface StatCardProps {
   color?: string;
 }
 
-export function StatCard({ title, value, subtitle, ios_icon, android_icon, color = colors.primary }: StatCardProps) {
+export function StatCard({ 
+  title, 
+  value, 
+  subtitle, 
+  ios_icon, 
+  android_icon, 
+  color = colors.primary 
+}: StatCardProps) {
   return (
-    <View style={[commonStyles.glassCard, styles.card]}>
-      <View style={styles.header}>
-        {ios_icon && android_icon && (
-          <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
-            <IconSymbol
-              ios_icon_name={ios_icon}
-              android_material_icon_name={android_icon}
-              size={24}
-              color={color}
-            />
-          </View>
-        )}
-        <Text style={styles.title}>{title}</Text>
-      </View>
+    <GlassView style={styles.card}>
+      {ios_icon && android_icon && (
+        <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
+          <IconSymbol
+            ios_icon_name={ios_icon}
+            android_material_icon_name={android_icon}
+            size={20}
+            color={color}
+          />
+        </View>
+      )}
+      <Text style={styles.title}>{title}</Text>
       <Text style={styles.value}>{value}</Text>
       {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-    </View>
+    </GlassView>
   );
 }
 
@@ -39,12 +45,8 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     minWidth: 150,
+    padding: 16,
     marginHorizontal: 6,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
   },
   iconContainer: {
     width: 40,
@@ -52,12 +54,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginBottom: 12,
   },
   title: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textSecondary,
     fontWeight: '500',
+    marginBottom: 8,
   },
   value: {
     fontSize: 28,
@@ -66,7 +69,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textSecondary,
+    opacity: 0.6,
   },
 });

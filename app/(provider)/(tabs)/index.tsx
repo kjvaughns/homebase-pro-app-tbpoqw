@@ -1,18 +1,18 @@
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
-import { StatCard } from '@/components/StatCard';
-import { BookingCard } from '@/components/BookingCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Booking, Invoice, Client } from '@/types';
 
+const { width: screenWidth } = Dimensions.get('window');
+
 export default function ProviderDashboard() {
-  const { user } = useAuth();
+  const { user, profile, organization } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState({
     totalClients: 0,
@@ -23,21 +23,107 @@ export default function ProviderDashboard() {
   const [todaysJobs, setTodaysJobs] = useState<Booking[]>([]);
   const [unpaidInvoices, setUnpaidInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [setupTasks, setSetupTasks] = useState({
+    stripeSetup: false,
+    hasServices: false,
+    hasClients: false,
+    calendarSync: false,
+  });
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    if (organization?.id) {
+      loadDashboardData();
+    }
+  }, [organization?.id]);
 
   const loadDashboardData = async () => {
     try {
-      // Load stats, bookings, and invoices from Supabase
-      // This is a placeholder - implement actual data fetching
+      if (!organization?.id) return;
+
+      // Load clients count
+      const { count: clientsCount } = await supabase
+        .from('clients')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', organization.id);
+
+      // Load active subscriptions count
+      const { count: subsCount } = await supabase
+        .from('subscriptions')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', organization.id)
+        .eq('status', 'active');
+
+      // Calculate MRR from active subscriptions
+      const { data: subscriptions } = await supabase
+        .from('subscriptions')
+        .select('price')
+        .eq('organization_id', organization.id)
+        .eq('status', 'active');
+
+      const mrr = subscriptions?.reduce((sum, sub) => sum + Number(sub.price || 0), 0) || 0;
+
+      // Load upcoming bookings (next 7 days)
+      const today = new Date();
+      const nextWeek = new Date(today);
+      nextWeek.setDate(today.getDate() + 7);
+
+      const { count: upcomingCount } = await supabase
+        .from('bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', organization.id)
+        .gte('scheduled_date', today.toISOString().split('T')[0])
+        .lte('scheduled_date', nextWeek.toISOString().split('T')[0])
+        .neq('status', 'cancelled');
+
+      // Load today's jobs
+      const { data: todayBookings } = await supabase
+        .from('bookings')
+        .select('*, clients(name)')
+        .eq('organization_id', organization.id)
+        .eq('scheduled_date', today.toISOString().split('T')[0])
+        .neq('status', 'cancelled')
+        .order('scheduled_time', { ascending: true });
+
+      // Load unpaid invoices
+      const { data: invoices } = await supabase
+        .from('invoices')
+        .select('*, clients(name)')
+        .eq('organization_id', organization.id)
+        .in('status', ['sent', 'overdue'])
+        .order('due_date', { ascending: true })
+        .limit(3);
+
+      // Check setup tasks
+      const { data: services } = await supabase
+        .from('services')
+        .select('id')
+        .eq('organization_id', organization.id)
+        .limit(1);
+
+      const { data: calendarConn } = await supabase
+        .from('calendar_connections')
+        .select('id')
+        .eq('organization_id', organization.id)
+        .eq('sync_enabled', true)
+        .limit(1);
+
       setStats({
-        totalClients: 24,
-        activeSubscribers: 8,
-        mrr: 3200,
-        upcomingBookings: 12,
+        totalClients: clientsCount || 0,
+        activeSubscribers: subsCount || 0,
+        mrr: Math.round(mrr),
+        upcomingBookings: upcomingCount || 0,
       });
+
+      setTodaysJobs(todayBookings || []);
+      setUnpaidInvoices(invoices || []);
+
+      setSetupTasks({
+        stripeSetup: !!organization.stripe_account_id,
+        hasServices: (services?.length || 0) > 0,
+        hasClients: (clientsCount || 0) > 0,
+        calendarSync: (calendarConn?.length || 0) > 0,
+      });
+
       setLoading(false);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -45,131 +131,234 @@ export default function ProviderDashboard() {
     }
   };
 
-  const handleQuickAction = (action: string) => {
-    switch (action) {
-      case 'add-client':
-        router.push('/(provider)/clients/add');
+  const handleKPIPress = (type: string) => {
+    switch (type) {
+      case 'clients':
+        router.push('/(provider)/(tabs)/clients');
         break;
-      case 'create-job':
-        router.push('/(provider)/schedule/create-job');
+      case 'subscribers':
+        router.push('/(provider)/money?tab=subscriptions');
         break;
-      case 'send-invoice':
-        router.push('/(provider)/invoices/create');
+      case 'mrr':
+        router.push('/(provider)/money?tab=overview');
         break;
-      case 'payment-link':
-        router.push('/(provider)/payments/quick-link');
+      case 'upcoming':
+        router.push('/(provider)/(tabs)/schedule');
         break;
-      default:
-        console.log('Unknown action:', action);
     }
   };
 
+  const handleSetupTask = (task: string) => {
+    switch (task) {
+      case 'stripe':
+        router.push('/(provider)/settings/payment');
+        break;
+      case 'service':
+        router.push('/(provider)/services/add');
+        break;
+      case 'clients':
+        router.push('/(provider)/clients/import-csv');
+        break;
+      case 'calendar':
+        router.push('/(provider)/settings?tab=integrations');
+        break;
+    }
+  };
+
+  const firstName = profile?.name?.split(' ')[0] || 'there';
+
+  // Filter incomplete setup tasks
+  const incompleteTasks = [
+    { key: 'stripe', label: 'Finish Stripe setup', completed: setupTasks.stripeSetup },
+    { key: 'service', label: 'Add your first service', completed: setupTasks.hasServices },
+    { key: 'clients', label: 'Import clients', completed: setupTasks.hasClients },
+    { key: 'calendar', label: 'Enable calendar sync', completed: setupTasks.calendarSync },
+  ].filter(task => !task.completed).slice(0, 3);
+
   return (
-    <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
+    <ScrollView 
+      style={commonStyles.container} 
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Welcome back,</Text>
-          <Text style={styles.name}>{user?.name || 'Provider'}</Text>
+          <Text style={styles.name}>{firstName}</Text>
         </View>
-        <TouchableOpacity style={styles.avatar}>
-          <Text style={styles.avatarText}>{user?.name?.[0] || 'P'}</Text>
+        <TouchableOpacity 
+          style={styles.profileChip}
+          onPress={() => router.push('/(provider)/settings')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.profileInitial}>
+            {firstName[0]?.toUpperCase()}
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Stats Cards */}
-      <View style={styles.statsGrid}>
-        <StatCard
-          title="Total Clients"
-          value={stats.totalClients.toString()}
-          subtitle="all time"
-          ios_icon="person.2.fill"
-          android_icon="people"
-          color={colors.primary}
-        />
-        <StatCard
-          title="Active Subscribers"
-          value={stats.activeSubscribers.toString()}
-          subtitle="recurring"
-          ios_icon="arrow.clockwise"
-          android_icon="autorenew"
-          color={colors.accent}
-        />
-        <StatCard
-          title="MRR"
-          value={`$${stats.mrr}`}
-          subtitle="monthly"
-          ios_icon="dollarsign.circle.fill"
-          android_icon="attach-money"
-          color={colors.success}
-        />
-        <StatCard
-          title="Upcoming"
-          value={stats.upcomingBookings.toString()}
-          subtitle="next 7 days"
-          ios_icon="calendar.badge.clock"
-          android_icon="event"
-          color={colors.warning}
-        />
-      </View>
+      {/* KPI Row */}
+      <View style={styles.kpiRow}>
+        <TouchableOpacity 
+          style={styles.kpiCard}
+          onPress={() => handleKPIPress('clients')}
+          activeOpacity={0.7}
+        >
+          <GlassView style={styles.kpiGlass}>
+            <View style={[styles.kpiIcon, { backgroundColor: colors.primary + '20' }]}>
+              <IconSymbol
+                ios_icon_name="person.2.fill"
+                android_material_icon_name="people"
+                size={20}
+                color={colors.primary}
+              />
+            </View>
+            <Text style={styles.kpiLabel}>Total Clients</Text>
+            <Text style={styles.kpiValue}>{stats.totalClients}</Text>
+            <Text style={styles.kpiSubtitle}>all time</Text>
+          </GlassView>
+        </TouchableOpacity>
 
-      {/* Business Flow Widget */}
-      <GlassView style={styles.flowWidget}>
-        <Text style={styles.sectionTitle}>Business Flow</Text>
-        <View style={styles.flowContainer}>
-          <View style={styles.flowStep}>
-            <View style={[styles.flowIcon, { backgroundColor: colors.primary }]}>
-              <IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="people" size={24} color={colors.text} />
+        <TouchableOpacity 
+          style={styles.kpiCard}
+          onPress={() => handleKPIPress('subscribers')}
+          activeOpacity={0.7}
+        >
+          <GlassView style={styles.kpiGlass}>
+            <View style={[styles.kpiIcon, { backgroundColor: colors.primary + '20' }]}>
+              <IconSymbol
+                ios_icon_name="arrow.clockwise"
+                android_material_icon_name="autorenew"
+                size={20}
+                color={colors.primary}
+              />
             </View>
-            <Text style={styles.flowLabel}>Clients</Text>
-            <Text style={styles.flowValue}>{stats.totalClients}</Text>
-          </View>
-          <IconSymbol ios_icon_name="arrow.right" android_material_icon_name="arrow-forward" size={20} color={colors.textSecondary} />
-          <View style={styles.flowStep}>
-            <View style={[styles.flowIcon, { backgroundColor: colors.accent }]}>
-              <IconSymbol ios_icon_name="wrench.and.screwdriver" android_material_icon_name="build" size={24} color={colors.text} />
+            <Text style={styles.kpiLabel}>Active Subscribers</Text>
+            <Text style={styles.kpiValue}>{stats.activeSubscribers}</Text>
+            <Text style={styles.kpiSubtitle}>recurring</Text>
+          </GlassView>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.kpiCard}
+          onPress={() => handleKPIPress('mrr')}
+          activeOpacity={0.7}
+        >
+          <GlassView style={styles.kpiGlass}>
+            <View style={[styles.kpiIcon, { backgroundColor: colors.primary + '20' }]}>
+              <IconSymbol
+                ios_icon_name="dollarsign.circle.fill"
+                android_material_icon_name="attach-money"
+                size={20}
+                color={colors.primary}
+              />
             </View>
-            <Text style={styles.flowLabel}>Jobs</Text>
-            <Text style={styles.flowValue}>{todaysJobs.length}</Text>
-          </View>
-          <IconSymbol ios_icon_name="arrow.right" android_material_icon_name="arrow-forward" size={20} color={colors.textSecondary} />
-          <View style={styles.flowStep}>
-            <View style={[styles.flowIcon, { backgroundColor: colors.warning }]}>
-              <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="description" size={24} color={colors.text} />
+            <Text style={styles.kpiLabel}>MRR</Text>
+            <Text style={styles.kpiValue}>${stats.mrr}</Text>
+            <Text style={styles.kpiSubtitle}>monthly</Text>
+          </GlassView>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.kpiCard}
+          onPress={() => handleKPIPress('upcoming')}
+          activeOpacity={0.7}
+        >
+          <GlassView style={styles.kpiGlass}>
+            <View style={[styles.kpiIcon, { backgroundColor: colors.primary + '20' }]}>
+              <IconSymbol
+                ios_icon_name="calendar.badge.clock"
+                android_material_icon_name="event"
+                size={20}
+                color={colors.primary}
+              />
             </View>
-            <Text style={styles.flowLabel}>Invoices</Text>
-            <Text style={styles.flowValue}>{unpaidInvoices.length}</Text>
-          </View>
-          <IconSymbol ios_icon_name="arrow.right" android_material_icon_name="arrow-forward" size={20} color={colors.textSecondary} />
-          <View style={styles.flowStep}>
-            <View style={[styles.flowIcon, { backgroundColor: colors.success }]}>
-              <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={24} color={colors.text} />
-            </View>
-            <Text style={styles.flowLabel}>Paid</Text>
-            <Text style={styles.flowValue}>${stats.mrr}</Text>
-          </View>
-        </View>
-      </GlassView>
+            <Text style={styles.kpiLabel}>Upcoming</Text>
+            <Text style={styles.kpiValue}>{stats.upcomingBookings}</Text>
+            <Text style={styles.kpiSubtitle}>next 7 days</Text>
+          </GlassView>
+        </TouchableOpacity>
+      </View>
 
       {/* Today's Jobs */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Today&apos;s Schedule</Text>
+          <Text style={styles.sectionTitle}>Today&apos;s Jobs</Text>
           <TouchableOpacity onPress={() => router.push('/(provider)/(tabs)/schedule')}>
             <Text style={styles.seeAll}>See All</Text>
           </TouchableOpacity>
         </View>
+
         {todaysJobs.length > 0 ? (
-          todaysJobs.map((booking, index) => (
-            <BookingCard
-              key={index}
-              booking={booking}
-              providerName="Client Name"
-            />
-          ))
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.jobsScroll}
+          >
+            {todaysJobs.map((booking, index) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
+                activeOpacity={0.7}
+              >
+                <GlassView style={styles.jobCard}>
+                  <View style={styles.jobHeader}>
+                    <Text style={styles.jobTime}>{booking.scheduled_time}</Text>
+                    <View style={[styles.jobStatus, { 
+                      backgroundColor: booking.status === 'confirmed' 
+                        ? colors.primary + '20' 
+                        : colors.textSecondary + '20' 
+                    }]}>
+                      <Text style={[styles.jobStatusText, {
+                        color: booking.status === 'confirmed' 
+                          ? colors.primary 
+                          : colors.textSecondary
+                      }]}>
+                        {booking.status}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.jobService} numberOfLines={1}>
+                    {booking.service_name}
+                  </Text>
+                  <Text style={styles.jobClient} numberOfLines={1}>
+                    {(booking as any).clients?.name || 'Client'}
+                  </Text>
+                  <View style={styles.jobLocation}>
+                    <IconSymbol
+                      ios_icon_name="location.fill"
+                      android_material_icon_name="location-on"
+                      size={12}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.jobAddress} numberOfLines={1}>
+                      {booking.address}
+                    </Text>
+                  </View>
+                  {booking.price && (
+                    <Text style={styles.jobPrice}>${booking.price}</Text>
+                  )}
+                </GlassView>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         ) : (
           <GlassView style={styles.emptyState}>
-            <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={48} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>No jobs scheduled for today</Text>
+            <IconSymbol
+              ios_icon_name="calendar"
+              android_material_icon_name="event"
+              size={48}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.emptyText}>No jobs today</Text>
+            <TouchableOpacity
+              style={styles.emptyButton}
+              onPress={() => router.push('/(provider)/schedule/create-job')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.emptyButtonText}>Create job</Text>
+            </TouchableOpacity>
           </GlassView>
         )}
       </View>
@@ -178,92 +367,88 @@ export default function ProviderDashboard() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Unpaid Invoices</Text>
-          <TouchableOpacity onPress={() => router.push('/(provider)/invoices')}>
+          <TouchableOpacity onPress={() => router.push('/(provider)/money?tab=invoices')}>
             <Text style={styles.seeAll}>See All</Text>
           </TouchableOpacity>
         </View>
+
         {unpaidInvoices.length > 0 ? (
-          unpaidInvoices.slice(0, 3).map((invoice, index) => (
-            <GlassView key={index} style={styles.invoiceCard}>
-              <View style={styles.invoiceHeader}>
-                <Text style={styles.invoiceNumber}>#{invoice.invoice_number}</Text>
-                <Text style={styles.invoiceAmount}>${invoice.total}</Text>
-              </View>
-              <Text style={styles.invoiceClient}>Client Name</Text>
-              <Text style={styles.invoiceDue}>Due: {invoice.due_date}</Text>
-            </GlassView>
-          ))
+          <React.Fragment>
+            {unpaidInvoices.map((invoice, index) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => router.push(`/(provider)/money/invoice/${invoice.id}`)}
+                activeOpacity={0.7}
+              >
+                <GlassView style={styles.invoiceCard}>
+                  <View style={styles.invoiceHeader}>
+                    <View>
+                      <Text style={styles.invoiceNumber}>#{invoice.invoice_number}</Text>
+                      <Text style={styles.invoiceClient}>
+                        {(invoice as any).clients?.name || 'Client'}
+                      </Text>
+                    </View>
+                    <Text style={styles.invoiceAmount}>${invoice.total}</Text>
+                  </View>
+                  <View style={styles.invoiceFooter}>
+                    <Text style={styles.invoiceDue}>
+                      Due: {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : 'N/A'}
+                    </Text>
+                    <View style={[styles.invoiceStatus, {
+                      backgroundColor: invoice.status === 'overdue' 
+                        ? colors.error + '20' 
+                        : colors.warning + '20'
+                    }]}>
+                      <Text style={[styles.invoiceStatusText, {
+                        color: invoice.status === 'overdue' ? colors.error : colors.warning
+                      }]}>
+                        {invoice.status}
+                      </Text>
+                    </View>
+                  </View>
+                </GlassView>
+              </TouchableOpacity>
+            ))}
+          </React.Fragment>
         ) : (
           <GlassView style={styles.emptyState}>
-            <IconSymbol ios_icon_name="checkmark.circle" android_material_icon_name="check-circle" size={48} color={colors.success} />
-            <Text style={styles.emptyText}>All invoices are paid!</Text>
+            <IconSymbol
+              ios_icon_name="checkmark.circle"
+              android_material_icon_name="check-circle"
+              size={48}
+              color={colors.primary}
+            />
+            <Text style={styles.emptyText}>All invoices paid</Text>
           </GlassView>
         )}
       </View>
 
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => handleQuickAction('add-client')}
-          >
-            <View style={[styles.actionIcon, { backgroundColor: colors.primary }]}>
-              <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="person-add" size={28} color={colors.text} />
-            </View>
-            <Text style={styles.actionText}>Add Client</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => handleQuickAction('create-job')}
-          >
-            <View style={[styles.actionIcon, { backgroundColor: colors.accent }]}>
-              <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={28} color={colors.text} />
-            </View>
-            <Text style={styles.actionText}>Create Job</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => handleQuickAction('send-invoice')}
-          >
-            <View style={[styles.actionIcon, { backgroundColor: colors.warning }]}>
-              <IconSymbol ios_icon_name="doc.text" android_material_icon_name="description" size={28} color={colors.text} />
-            </View>
-            <Text style={styles.actionText}>Send Invoice</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => handleQuickAction('payment-link')}
-          >
-            <View style={[styles.actionIcon, { backgroundColor: colors.success }]}>
-              <IconSymbol ios_icon_name="link" android_material_icon_name="link" size={28} color={colors.text} />
-            </View>
-            <Text style={styles.actionText}>Payment Link</Text>
-          </TouchableOpacity>
+      {/* What Matters Now */}
+      {incompleteTasks.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>What Matters Now</Text>
+          <View style={styles.tasksGrid}>
+            {incompleteTasks.map((task, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.taskCard}
+                onPress={() => handleSetupTask(task.key)}
+                activeOpacity={0.7}
+              >
+                <GlassView style={styles.taskGlass}>
+                  <IconSymbol
+                    ios_icon_name="arrow.right.circle.fill"
+                    android_material_icon_name="arrow-circle-right"
+                    size={24}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.taskLabel}>{task.label}</Text>
+                </GlassView>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-      </View>
-
-      {/* Setup Checklist */}
-      <GlassView style={styles.checklistCard}>
-        <Text style={styles.sectionTitle}>Setup Checklist</Text>
-        <View style={styles.checklistItem}>
-          <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={24} color={colors.success} />
-          <Text style={styles.checklistText}>Complete business profile</Text>
-        </View>
-        <View style={styles.checklistItem}>
-          <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={24} color={colors.success} />
-          <Text style={styles.checklistText}>Add services</Text>
-        </View>
-        <View style={styles.checklistItem}>
-          <IconSymbol ios_icon_name="circle" android_material_icon_name="radio-button-unchecked" size={24} color={colors.textSecondary} />
-          <Text style={[styles.checklistText, { color: colors.textSecondary }]}>Connect Stripe account</Text>
-        </View>
-        <View style={styles.checklistItem}>
-          <IconSymbol ios_icon_name="circle" android_material_icon_name="radio-button-unchecked" size={24} color={colors.textSecondary} />
-          <Text style={[styles.checklistText, { color: colors.textSecondary }]}>Add your first client</Text>
-        </View>
-      </GlassView>
+      )}
     </ScrollView>
   );
 }
@@ -271,7 +456,7 @@ export default function ProviderDashboard() {
 const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   header: {
     flexDirection: 'row',
@@ -281,74 +466,82 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   greeting: {
-    fontSize: 16,
+    fontSize: 14,
     color: colors.textSecondary,
+    opacity: 0.7,
+    marginBottom: 4,
   },
   name: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
     color: colors.text,
+    letterSpacing: -0.5,
   },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+  profileChip: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
-  avatarText: {
+  profileInitial: {
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
   },
-  statsGrid: {
+  kpiRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 14,
-    marginBottom: 20,
-  },
-  flowWidget: {
-    marginHorizontal: 20,
-    padding: 20,
     marginBottom: 24,
+    gap: 12,
   },
-  flowContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 16,
+  kpiCard: {
+    width: (screenWidth - 52) / 2,
   },
-  flowStep: {
-    alignItems: 'center',
+  kpiGlass: {
+    padding: 16,
+    height: 140,
   },
-  flowIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  kpiIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 12,
+  },
+  kpiLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    opacity: 0.8,
     marginBottom: 8,
   },
-  flowLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
+  kpiValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.text,
     marginBottom: 4,
   },
-  flowValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+  kpiSubtitle: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    opacity: 0.6,
   },
   section: {
     paddingHorizontal: 20,
-    marginBottom: 24,
+    marginBottom: 32,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 20,
@@ -360,14 +553,84 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
   },
+  jobsScroll: {
+    paddingRight: 20,
+    gap: 12,
+  },
+  jobCard: {
+    width: 240,
+    padding: 16,
+    marginRight: 12,
+  },
+  jobHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  jobTime: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  jobStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  jobStatusText: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  jobService: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  jobClient: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  jobLocation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 8,
+  },
+  jobAddress: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  jobPrice: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: 4,
+  },
   emptyState: {
-    padding: 32,
+    padding: 40,
     alignItems: 'center',
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.textSecondary,
     marginTop: 12,
+    marginBottom: 16,
+  },
+  emptyButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  emptyButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   },
   invoiceCard: {
     padding: 16,
@@ -376,66 +639,64 @@ const styles = StyleSheet.create({
   invoiceHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   invoiceNumber: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
-  },
-  invoiceAmount: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.primary,
+    marginBottom: 4,
   },
   invoiceClient: {
-    fontSize: 14,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  invoiceAmount: {
+    fontSize: 24,
+    fontWeight: '800',
     color: colors.text,
-    marginBottom: 4,
+  },
+  invoiceFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   invoiceDue: {
     fontSize: 12,
     color: colors.textSecondary,
   },
-  quickActions: {
+  invoiceStatus: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  invoiceStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  tasksGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
     marginTop: 12,
   },
-  actionCard: {
-    width: '48%',
-    alignItems: 'center',
+  taskCard: {
+    width: (screenWidth - 52) / 2,
+  },
+  taskGlass: {
     padding: 16,
-  },
-  actionIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
+    gap: 12,
+    minHeight: 72,
   },
-  actionText: {
+  taskLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
-    textAlign: 'center',
-  },
-  checklistCard: {
-    marginHorizontal: 20,
-    padding: 20,
-    marginBottom: 24,
-  },
-  checklistItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-    gap: 12,
-  },
-  checklistText: {
-    fontSize: 15,
-    color: colors.text,
+    flex: 1,
+    lineHeight: 18,
   },
 });

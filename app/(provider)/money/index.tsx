@@ -1,117 +1,91 @@
 
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Invoice, Payment } from '@/types';
-import { EmptyState } from '@/components/EmptyState';
+import { supabase } from '@/app/integrations/supabase/client';
 
-type TabType = 'invoices' | 'payments' | 'overview';
+type Tab = 'invoices' | 'payments' | 'overview' | 'subscriptions';
 
 export default function MoneyScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { organization } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [activeTab, setActiveTab] = useState<Tab>((params.tab as Tab) || 'overview');
   const [stats, setStats] = useState({
     totalCollected: 0,
     pending: 0,
     fees: 0,
     thisMonth: 0,
   });
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadMoneyData();
-  }, []);
+    if (params.tab) {
+      setActiveTab(params.tab as Tab);
+    }
+  }, [params.tab]);
 
-  const loadMoneyData = async () => {
+  useEffect(() => {
+    if (organization?.id) {
+      loadStats();
+    }
+  }, [organization?.id]);
+
+  const loadStats = async () => {
     try {
-      const [invoicesRes, paymentsRes] = await Promise.all([
-        supabase
-          .from('invoices')
-          .select('*')
-          .eq('organization_id', organization?.id)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('payments')
-          .select('*')
-          .eq('organization_id', organization?.id)
-          .order('created_at', { ascending: false }),
-      ]);
+      if (!organization?.id) return;
 
-      if (invoicesRes.data) setInvoices(invoicesRes.data);
-      if (paymentsRes.data) {
-        setPayments(paymentsRes.data);
-        
-        // Calculate stats
-        const collected = paymentsRes.data
-          .filter((p) => p.status === 'succeeded')
-          .reduce((sum, p) => sum + Number(p.amount), 0);
-        
-        const pending = invoicesRes.data
-          ?.filter((i) => i.status === 'sent' || i.status === 'overdue')
-          .reduce((sum, i) => sum + Number(i.total), 0) || 0;
+      // Load payment stats
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('amount, status, created_at')
+        .eq('organization_id', organization.id);
 
-        const thisMonth = paymentsRes.data
-          .filter((p) => {
-            const paymentDate = new Date(p.created_at);
-            const now = new Date();
-            return (
-              p.status === 'succeeded' &&
-              paymentDate.getMonth() === now.getMonth() &&
-              paymentDate.getFullYear() === now.getFullYear()
-            );
-          })
-          .reduce((sum, p) => sum + Number(p.amount), 0);
+      const totalCollected = payments
+        ?.filter(p => p.status === 'succeeded')
+        .reduce((sum, p) => sum + Number(p.amount), 0) || 0;
 
-        setStats({
-          totalCollected: collected,
-          pending,
-          fees: collected * 0.029, // Estimate 2.9% fees
-          thisMonth,
-        });
-      }
+      const pending = payments
+        ?.filter(p => p.status === 'pending')
+        .reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+
+      const thisMonth = payments
+        ?.filter(p => {
+          const date = new Date(p.created_at);
+          const now = new Date();
+          return date.getMonth() === now.getMonth() && 
+                 date.getFullYear() === now.getFullYear() &&
+                 p.status === 'succeeded';
+        })
+        .reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+
+      setStats({
+        totalCollected: Math.round(totalCollected),
+        pending: Math.round(pending),
+        fees: Math.round(totalCollected * 0.025), // Estimate 2.5% fees
+        thisMonth: Math.round(thisMonth),
+      });
     } catch (error) {
-      console.error('Error loading money data:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error loading stats:', error);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'paid':
-      case 'succeeded':
-        return colors.success;
-      case 'sent':
-      case 'pending':
-        return colors.warning;
-      case 'overdue':
-      case 'failed':
-        return colors.error;
-      default:
-        return colors.textSecondary;
-    }
-  };
+  const tabs: { key: Tab; label: string; icon: string }[] = [
+    { key: 'overview', label: 'Overview', icon: 'dashboard' },
+    { key: 'invoices', label: 'Invoices', icon: 'receipt' },
+    { key: 'payments', label: 'Payments', icon: 'payment' },
+    { key: 'subscriptions', label: 'Subscriptions', icon: 'autorenew' },
+  ];
 
   return (
     <View style={commonStyles.container}>
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.back()}>
             <IconSymbol
               ios_icon_name="chevron.left"
               android_material_icon_name="arrow-back"
@@ -120,217 +94,138 @@ export default function MoneyScreen() {
             />
           </TouchableOpacity>
           <Text style={styles.title}>Money</Text>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => router.push('/(provider)/money/create-invoice')}
-          >
-            <IconSymbol
-              ios_icon_name="plus"
-              android_material_icon_name="add"
-              size={24}
-              color={colors.text}
-            />
-          </TouchableOpacity>
+          <View style={{ width: 24 }} />
         </View>
 
         {/* Tabs */}
-        <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'overview' && styles.activeTab]}
-            onPress={() => setActiveTab('overview')}
-          >
-            <Text style={[styles.tabText, activeTab === 'overview' && styles.activeTabText]}>
-              Overview
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'invoices' && styles.activeTab]}
-            onPress={() => setActiveTab('invoices')}
-          >
-            <Text style={[styles.tabText, activeTab === 'invoices' && styles.activeTabText]}>
-              Invoices
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'payments' && styles.activeTab]}
-            onPress={() => setActiveTab('payments')}
-          >
-            <Text style={[styles.tabText, activeTab === 'payments' && styles.activeTabText]}>
-              Payments
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsScroll}
+        >
+          {tabs.map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+              onPress={() => setActiveTab(tab.key)}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name={tab.icon}
+                android_material_icon_name={tab.icon}
+                size={20}
+                color={activeTab === tab.key ? colors.primary : colors.textSecondary}
+              />
+              <Text style={[
+                styles.tabText,
+                activeTab === tab.key && styles.tabTextActive
+              ]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-        {/* Overview Tab */}
+        {/* Content */}
         {activeTab === 'overview' && (
-          <View>
+          <View style={styles.section}>
             <View style={styles.statsGrid}>
               <GlassView style={styles.statCard}>
-                <IconSymbol
-                  ios_icon_name="checkmark.circle.fill"
-                  android_material_icon_name="check-circle"
-                  size={32}
-                  color={colors.success}
-                />
-                <Text style={styles.statValue}>${stats.totalCollected.toFixed(2)}</Text>
                 <Text style={styles.statLabel}>Total Collected</Text>
+                <Text style={styles.statValue}>${stats.totalCollected}</Text>
               </GlassView>
-
               <GlassView style={styles.statCard}>
-                <IconSymbol
-                  ios_icon_name="clock.fill"
-                  android_material_icon_name="schedule"
-                  size={32}
-                  color={colors.warning}
-                />
-                <Text style={styles.statValue}>${stats.pending.toFixed(2)}</Text>
                 <Text style={styles.statLabel}>Pending</Text>
+                <Text style={styles.statValue}>${stats.pending}</Text>
               </GlassView>
-
               <GlassView style={styles.statCard}>
-                <IconSymbol
-                  ios_icon_name="calendar"
-                  android_material_icon_name="event"
-                  size={32}
-                  color={colors.primary}
-                />
-                <Text style={styles.statValue}>${stats.thisMonth.toFixed(2)}</Text>
+                <Text style={styles.statLabel}>Fees</Text>
+                <Text style={styles.statValue}>${stats.fees}</Text>
+              </GlassView>
+              <GlassView style={styles.statCard}>
                 <Text style={styles.statLabel}>This Month</Text>
-              </GlassView>
-
-              <GlassView style={styles.statCard}>
-                <IconSymbol
-                  ios_icon_name="chart.bar.fill"
-                  android_material_icon_name="bar-chart"
-                  size={32}
-                  color={colors.accent}
-                />
-                <Text style={styles.statValue}>${stats.fees.toFixed(2)}</Text>
-                <Text style={styles.statLabel}>Fees (Est.)</Text>
+                <Text style={styles.statValue}>${stats.thisMonth}</Text>
               </GlassView>
             </View>
 
             <View style={styles.quickActions}>
               <TouchableOpacity
-                style={styles.actionCard}
+                style={styles.actionButton}
                 onPress={() => router.push('/(provider)/money/create-invoice')}
               >
-                <IconSymbol
-                  ios_icon_name="doc.text.fill"
-                  android_material_icon_name="description"
-                  size={28}
-                  color={colors.primary}
-                />
-                <Text style={styles.actionText}>Create Invoice</Text>
+                <GlassView style={styles.actionGlass}>
+                  <IconSymbol
+                    ios_icon_name="doc.text.fill"
+                    android_material_icon_name="description"
+                    size={24}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.actionText}>Create Invoice</Text>
+                </GlassView>
               </TouchableOpacity>
-
               <TouchableOpacity
-                style={styles.actionCard}
+                style={styles.actionButton}
                 onPress={() => router.push('/(provider)/money/payment-link')}
               >
-                <IconSymbol
-                  ios_icon_name="link"
-                  android_material_icon_name="link"
-                  size={28}
-                  color={colors.accent}
-                />
-                <Text style={styles.actionText}>Payment Link</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionCard}
-                onPress={() => router.push('/(provider)/money/record-payment')}
-              >
-                <IconSymbol
-                  ios_icon_name="dollarsign.circle.fill"
-                  android_material_icon_name="attach-money"
-                  size={28}
-                  color={colors.success}
-                />
-                <Text style={styles.actionText}>Record Payment</Text>
+                <GlassView style={styles.actionGlass}>
+                  <IconSymbol
+                    ios_icon_name="link"
+                    android_material_icon_name="link"
+                    size={24}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.actionText}>Payment Link</Text>
+                </GlassView>
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* Invoices Tab */}
         {activeTab === 'invoices' && (
-          <View>
-            {invoices.length > 0 ? (
-              invoices.map((invoice, index) => (
-                <TouchableOpacity
-                  key={index}
-                  onPress={() => router.push(`/(provider)/money/invoice/${invoice.id}`)}
-                >
-                  <GlassView style={styles.listItem}>
-                    <View style={styles.listItemHeader}>
-                      <Text style={styles.listItemTitle}>#{invoice.invoice_number}</Text>
-                      <Text style={styles.listItemAmount}>${invoice.total}</Text>
-                    </View>
-                    <Text style={styles.listItemSubtitle}>
-                      Due: {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : 'N/A'}
-                    </Text>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        { backgroundColor: getStatusColor(invoice.status) + '30' },
-                      ]}
-                    >
-                      <Text style={[styles.statusText, { color: getStatusColor(invoice.status) }]}>
-                        {invoice.status.toUpperCase()}
-                      </Text>
-                    </View>
-                  </GlassView>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <EmptyState
-                ios_icon="doc.text"
-                android_icon="description"
-                title="No Invoices Yet"
-                message="Create your first invoice to get paid"
-                actionLabel="Create Invoice"
-                onAction={() => router.push('/(provider)/money/create-invoice')}
+          <View style={styles.section}>
+            <GlassView style={styles.emptyState}>
+              <IconSymbol
+                ios_icon_name="doc.text"
+                android_material_icon_name="description"
+                size={48}
+                color={colors.textSecondary}
               />
-            )}
+              <Text style={styles.emptyText}>No invoices yet</Text>
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={() => router.push('/(provider)/money/create-invoice')}
+              >
+                <Text style={styles.emptyButtonText}>Create Invoice</Text>
+              </TouchableOpacity>
+            </GlassView>
           </View>
         )}
 
-        {/* Payments Tab */}
         {activeTab === 'payments' && (
-          <View>
-            {payments.length > 0 ? (
-              payments.map((payment, index) => (
-                <GlassView key={index} style={styles.listItem}>
-                  <View style={styles.listItemHeader}>
-                    <Text style={styles.listItemTitle}>${payment.amount}</Text>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        { backgroundColor: getStatusColor(payment.status) + '30' },
-                      ]}
-                    >
-                      <Text style={[styles.statusText, { color: getStatusColor(payment.status) }]}>
-                        {payment.status.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.listItemSubtitle}>
-                    {payment.payment_method} • {new Date(payment.created_at).toLocaleDateString()}
-                  </Text>
-                  {payment.notes && (
-                    <Text style={styles.listItemNotes}>{payment.notes}</Text>
-                  )}
-                </GlassView>
-              ))
-            ) : (
-              <EmptyState
-                ios_icon="creditcard"
-                android_icon="payment"
-                title="No Payments Yet"
-                message="Payments will appear here once received"
+          <View style={styles.section}>
+            <GlassView style={styles.emptyState}>
+              <IconSymbol
+                ios_icon_name="creditcard"
+                android_material_icon_name="payment"
+                size={48}
+                color={colors.textSecondary}
               />
-            )}
+              <Text style={styles.emptyText}>No payments yet</Text>
+            </GlassView>
+          </View>
+        )}
+
+        {activeTab === 'subscriptions' && (
+          <View style={styles.section}>
+            <GlassView style={styles.emptyState}>
+              <IconSymbol
+                ios_icon_name="arrow.clockwise"
+                android_material_icon_name="autorenew"
+                size={48}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.emptyText}>No subscriptions yet</Text>
+            </GlassView>
           </View>
         )}
       </ScrollView>
@@ -341,58 +236,50 @@ export default function MoneyScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
     marginBottom: 24,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.glass,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '800',
     color: colors.text,
   },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabs: {
-    flexDirection: 'row',
+  tabsScroll: {
+    paddingHorizontal: 20,
+    gap: 12,
     marginBottom: 24,
-    gap: 8,
   },
   tab: {
-    flex: 1,
-    paddingVertical: 12,
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.glass,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 12,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
   },
-  activeTab: {
-    backgroundColor: colors.primary,
+  tabActive: {
+    backgroundColor: colors.primary + '20',
+    borderColor: colors.primary + '40',
   },
   tabText: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.textSecondary,
   },
-  activeTabText: {
-    color: colors.text,
+  tabTextActive: {
+    color: colors.primary,
+  },
+  section: {
+    paddingHorizontal: 20,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -401,81 +288,56 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   statCard: {
-    width: '48%',
+    flex: 1,
+    minWidth: '47%',
     padding: 16,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.text,
-    marginTop: 8,
-    marginBottom: 4,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
-    textAlign: 'center',
+    marginBottom: 8,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
   },
   quickActions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 12,
-    marginBottom: 24,
   },
-  actionCard: {
-    width: '31%',
+  actionButton: {
+    flex: 1,
+  },
+  actionGlass: {
+    padding: 20,
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: colors.glass,
-    borderRadius: 12,
+    gap: 12,
   },
   actionText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
-    textAlign: 'center',
-    marginTop: 8,
   },
-  listItem: {
-    padding: 16,
-    marginBottom: 12,
-  },
-  listItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  emptyState: {
+    padding: 40,
     alignItems: 'center',
-    marginBottom: 8,
   },
-  listItemTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  listItemAmount: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.primary,
-  },
-  listItemSubtitle: {
-    fontSize: 14,
+  emptyText: {
+    fontSize: 15,
     color: colors.textSecondary,
-    marginBottom: 8,
+    marginTop: 12,
+    marginBottom: 16,
   },
-  listItemNotes: {
-    fontSize: 13,
+  emptyButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  emptyButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.text,
-    marginTop: 8,
-  },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
   },
 });

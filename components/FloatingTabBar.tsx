@@ -12,7 +12,6 @@ import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
-import { useTheme } from '@react-navigation/native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -21,6 +20,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
+import { colors } from '@/styles/commonStyles';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -46,7 +46,6 @@ export default function FloatingTabBar({
 }: FloatingTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const theme = useTheme();
   const animatedValue = useSharedValue(0);
 
   const activeTabIndex = React.useMemo(() => {
@@ -106,39 +105,6 @@ export default function FloatingTabBar({
     };
   });
 
-  const dynamicStyles = {
-    blurContainer: {
-      ...styles.blurContainer,
-      borderWidth: 1,
-      borderColor: theme.dark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
-      ...Platform.select({
-        ios: {
-          backgroundColor: theme.dark
-            ? 'rgba(28, 28, 30, 0.85)'
-            : 'rgba(255, 255, 255, 0.85)',
-        },
-        android: {
-          backgroundColor: theme.dark
-            ? 'rgba(28, 28, 30, 0.95)'
-            : 'rgba(255, 255, 255, 0.95)',
-        },
-        web: {
-          backgroundColor: theme.dark
-            ? 'rgba(28, 28, 30, 0.95)'
-            : 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(20px)',
-        },
-      }),
-    },
-    indicator: {
-      ...styles.indicator,
-      backgroundColor: theme.dark
-        ? 'rgba(255, 255, 255, 0.12)'
-        : 'rgba(0, 0, 0, 0.06)',
-      width: `${tabWidthPercent}%` as `${number}%`,
-    },
-  };
-
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <View style={[
@@ -149,42 +115,44 @@ export default function FloatingTabBar({
         }
       ]}>
         <BlurView
-          intensity={Platform.OS === 'ios' ? 80 : 100}
-          style={[dynamicStyles.blurContainer, { borderRadius }]}
+          intensity={Platform.OS === 'ios' ? 100 : 100}
+          tint="dark"
+          style={[styles.blurContainer, { borderRadius }]}
         >
-          <Animated.View style={[dynamicStyles.indicator, indicatorStyle]} />
-          <View style={styles.tabsContainer}>
-            {tabs.map((tab, index) => {
-              const isActive = activeTabIndex === index;
+          <View style={styles.innerContainer}>
+            <Animated.View style={[styles.indicator, indicatorStyle, { width: `${tabWidthPercent}%` }]} />
+            <View style={styles.tabsContainer}>
+              {tabs.map((tab, index) => {
+                const isActive = activeTabIndex === index;
 
-              return (
-                <React.Fragment key={index}>
-                  <TouchableOpacity
-                    style={styles.tab}
-                    onPress={() => handleTabPress(tab.route)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.tabContent}>
-                      <IconSymbol
-                        android_material_icon_name={tab.icon}
-                        ios_icon_name={tab.icon}
-                        size={24}
-                        color={isActive ? theme.colors.primary : (theme.dark ? '#98989D' : '#8E8E93')}
-                      />
-                      <Text
-                        style={[
-                          styles.tabLabel,
-                          { color: theme.dark ? '#98989D' : '#8E8E93' },
-                          isActive && { color: theme.colors.primary, fontWeight: '600' },
-                        ]}
-                      >
-                        {tab.label}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                </React.Fragment>
-              );
-            })}
+                return (
+                  <React.Fragment key={index}>
+                    <TouchableOpacity
+                      style={styles.tab}
+                      onPress={() => handleTabPress(tab.route)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.tabContent}>
+                        <IconSymbol
+                          android_material_icon_name={tab.icon}
+                          ios_icon_name={tab.icon}
+                          size={24}
+                          color={isActive ? colors.primary : colors.textSecondary}
+                        />
+                        <Text
+                          style={[
+                            styles.tabLabel,
+                            isActive && styles.tabLabelActive,
+                          ]}
+                        >
+                          {tab.label}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </React.Fragment>
+                );
+              })}
+            </View>
           </View>
         </BlurView>
       </View>
@@ -206,11 +174,16 @@ const styles = StyleSheet.create({
   },
   blurContainer: {
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  innerContainer: {
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
   },
   indicator: {
     position: 'absolute',
@@ -218,6 +191,7 @@ const styles = StyleSheet.create({
     left: 8,
     bottom: 6,
     borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   tabsContainer: {
     flexDirection: 'row',
@@ -238,7 +212,15 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 10,
-    fontWeight: '500',
+    fontWeight: '600',
+    color: colors.textSecondary,
     marginTop: 2,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  tabLabelActive: {
+    color: colors.text,
+    fontWeight: '700',
   },
 });

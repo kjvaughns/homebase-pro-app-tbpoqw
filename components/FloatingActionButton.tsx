@@ -1,116 +1,115 @@
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
+import Animated, { 
+  useAnimatedStyle, 
+  useSharedValue, 
+  withSpring,
+  withTiming 
+} from 'react-native-reanimated';
+
+const { height: screenHeight } = Dimensions.get('window');
 
 interface FABAction {
   label: string;
   icon: string;
   route: string;
-  color: string;
 }
 
 export default function FloatingActionButton() {
   const router = useRouter();
   const [isExpanded, setIsExpanded] = useState(false);
-  const animation = React.useRef(new Animated.Value(0)).current;
+  const rotation = useSharedValue(0);
+  const scale = useSharedValue(1);
 
   const actions: FABAction[] = [
-    { label: 'Client', icon: 'person-add', route: '/(provider)/clients/add', color: colors.primary },
-    { label: 'Job', icon: 'event', route: '/(provider)/schedule/create-job', color: colors.accent },
-    { label: 'Invoice', icon: 'receipt', route: '/(provider)/invoices/create', color: colors.warning },
-    { label: 'Payment', icon: 'attach-money', route: '/(provider)/payments/quick-link', color: colors.success },
-    { label: 'Ask AI', icon: 'auto-awesome', route: '/(provider)/ai-assistant', color: colors.highlight },
+    { label: 'Add Client', icon: 'person-add', route: '/(provider)/clients/add' },
+    { label: 'Create Job', icon: 'event', route: '/(provider)/schedule/create-job' },
+    { label: 'Send Invoice', icon: 'receipt', route: '/(provider)/money/create-invoice' },
+    { label: 'Payment Link', icon: 'link', route: '/(provider)/money/payment-link' },
   ];
 
   const toggleMenu = () => {
-    const toValue = isExpanded ? 0 : 1;
-    Animated.spring(animation, {
-      toValue,
-      useNativeDriver: true,
-      friction: 6,
-    }).start();
+    rotation.value = withSpring(isExpanded ? 0 : 45, {
+      damping: 15,
+      stiffness: 150,
+    });
+    scale.value = withSpring(isExpanded ? 1 : 0.9, {
+      damping: 15,
+      stiffness: 150,
+    });
     setIsExpanded(!isExpanded);
   };
 
   const handleActionPress = (route: string) => {
-    toggleMenu();
+    setIsExpanded(false);
+    rotation.value = withSpring(0);
+    scale.value = withSpring(1);
     setTimeout(() => {
       router.push(route as any);
-    }, 200);
+    }, 150);
   };
 
+  const fabAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { rotate: `${rotation.value}deg` },
+        { scale: scale.value },
+      ],
+    };
+  });
+
   return (
-    <View style={styles.container}>
-      {/* Action Buttons */}
-      {actions.map((action, index) => {
-        const translateY = animation.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -(index + 1) * 70],
-        });
-
-        const opacity = animation.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0, 0, 1],
-        });
-
-        const scale = animation.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.3, 1],
-        });
-
-        return (
-          <Animated.View
-            key={index}
-            style={[
-              styles.actionContainer,
-              {
-                transform: [{ translateY }, { scale }],
-                opacity,
-              },
-            ]}
-          >
-            <View style={styles.labelContainer}>
-              <BlurView intensity={80} style={styles.labelBlur}>
-                <Text style={styles.actionLabel}>{action.label}</Text>
-              </BlurView>
+    <React.Fragment>
+      {/* Action Menu Modal */}
+      <Modal
+        visible={isExpanded}
+        transparent
+        animationType="fade"
+        onRequestClose={toggleMenu}
+      >
+        <TouchableOpacity 
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={toggleMenu}
+        >
+          <BlurView intensity={40} tint="dark" style={styles.blurBackdrop}>
+            <View style={styles.menuContainer}>
+              {actions.map((action, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.actionButton}
+                  onPress={() => handleActionPress(action.route)}
+                  activeOpacity={0.8}
+                >
+                  <BlurView intensity={80} tint="dark" style={styles.actionBlur}>
+                    <View style={styles.actionContent}>
+                      <IconSymbol
+                        ios_icon_name={action.icon}
+                        android_material_icon_name={action.icon}
+                        size={24}
+                        color={colors.text}
+                      />
+                      <Text style={styles.actionLabel}>{action.label}</Text>
+                    </View>
+                  </BlurView>
+                </TouchableOpacity>
+              ))}
             </View>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: action.color }]}
-              onPress={() => handleActionPress(action.route)}
-              activeOpacity={0.8}
-            >
-              <IconSymbol
-                ios_icon_name={action.icon}
-                android_material_icon_name={action.icon}
-                size={24}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-          </Animated.View>
-        );
-      })}
+          </BlurView>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Main FAB Button */}
-      <TouchableOpacity
-        style={[styles.mainButton, isExpanded && styles.mainButtonExpanded]}
-        onPress={toggleMenu}
-        activeOpacity={0.9}
-      >
-        <Animated.View
-          style={{
-            transform: [
-              {
-                rotate: animation.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0deg', '45deg'],
-                }),
-              },
-            ],
-          }}
+      <Animated.View style={[styles.fabContainer, fabAnimatedStyle]}>
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={toggleMenu}
+          activeOpacity={0.9}
         >
           <IconSymbol
             ios_icon_name="plus"
@@ -118,73 +117,20 @@ export default function FloatingActionButton() {
             size={28}
             color={colors.text}
           />
-        </Animated.View>
-      </TouchableOpacity>
-
-      {/* Backdrop */}
-      {isExpanded && (
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={toggleMenu}
-        />
-      )}
-    </View>
+        </TouchableOpacity>
+      </Animated.View>
+    </React.Fragment>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  fabContainer: {
     position: 'absolute',
     right: 20,
     bottom: 100,
     zIndex: 999,
   },
-  backdrop: {
-    position: 'absolute',
-    top: -1000,
-    left: -1000,
-    right: -1000,
-    bottom: -1000,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    zIndex: -1,
-  },
-  actionContainer: {
-    position: 'absolute',
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  labelContainer: {
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  labelBlur: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  actionLabel: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  actionButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  mainButton: {
+  fab: {
     width: 64,
     height: 64,
     borderRadius: 32,
@@ -192,12 +138,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
+    shadowRadius: 16,
+    elevation: 12,
   },
-  mainButtonExpanded: {
-    backgroundColor: colors.error,
+  backdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  blurBackdrop: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuContainer: {
+    width: '80%',
+    maxWidth: 320,
+    gap: 12,
+  },
+  actionButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  actionBlur: {
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+  },
+  actionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  actionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
   },
 });

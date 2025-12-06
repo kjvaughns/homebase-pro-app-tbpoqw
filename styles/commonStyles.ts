@@ -1,21 +1,22 @@
 
 import { StyleSheet } from 'react-native';
 
-// HomeBase Official Brand Colors
+// HomeBase Official Brand Colors - Clean Liquid Glass UI
 export const colors = {
-  primary: '#16b25e',        // HomeBase Green (Updated to match logo)
-  primaryDark: '#083322',    // Dark Green
-  background: '#050505',     // Dark Background
+  primary: '#0FAF6E',           // HomeBase Green - PRIMARY ACCENT ONLY
+  primaryDark: '#083322',       // Dark Green
+  background: '#050505',        // Dark Background
   glass: 'rgba(255,255,255,0.05)',
   glassBorder: 'rgba(255,255,255,0.1)',
-  accent: '#00F0FF',         // Cyan Accent
   text: '#FFFFFF',
-  textSecondary: '#A0A0A0',
+  textSecondary: 'rgba(255,255,255,0.6)',
   card: 'rgba(255,255,255,0.05)',
-  highlight: '#00F0FF',
-  success: '#16b25e',        // Updated to match logo
-  warning: '#FFA500',
-  error: '#FF4444',
+  success: '#0FAF6E',           // Same as primary
+  warning: '#FF9500',           // Neutral orange for warnings
+  error: '#FF3B30',             // Red for errors
+  // Removed all blue/cyan/yellow accents
+  accent: '#0FAF6E',            // Use primary green for all accents
+  highlight: '#0FAF6E',         // Use primary green for highlights
 };
 
 export const buttonStyles = StyleSheet.create({
@@ -26,7 +27,10 @@ export const buttonStyles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0px 4px 12px rgba(15, 175, 110, 0.3)',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
   },
   secondaryButton: {
     backgroundColor: colors.glass,
@@ -103,7 +107,10 @@ export const commonStyles = StyleSheet.create({
     padding: 20,
     marginVertical: 8,
     width: '100%',
-    boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
   },
   card: {
     backgroundColor: colors.card,
