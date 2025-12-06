@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User, UserRole, Profile, Organization } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Session } from '@supabase/supabase-js';
+import { Alert } from 'react-native';
 
 interface AuthContextType {
   user: User | null;
@@ -31,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Initial session:', session?.user?.id);
       setSession(session);
       if (session?.user) {
         loadUserData(session.user.id);
@@ -41,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('Auth state changed:', _event, session?.user?.id);
       setSession(session);
       if (session?.user) {
         loadUserData(session.user.id);
@@ -57,6 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadUserData = async (userId: string) => {
     try {
+      console.log('Loading user data for:', userId);
+      
       // Load profile
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
@@ -64,9 +69,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('user_id', userId)
         .single();
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Profile error:', profileError);
+        throw profileError;
+      }
 
       if (profileData) {
+        console.log('Profile loaded:', profileData.role);
         setProfile(profileData);
         setUser({
           id: profileData.id,
@@ -87,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .single();
 
           if (orgData) {
+            console.log('Organization loaded:', orgData.id);
             setOrganization(orgData);
           }
         }
@@ -99,67 +109,142 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      console.log('Attempting login for:', email);
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) throw error;
-    if (data.user) {
-      await loadUserData(data.user.id);
+      if (error) {
+        console.error('Login error:', error);
+        
+        // Show user-friendly error messages
+        if (error.message.includes('Email not confirmed')) {
+          Alert.alert(
+            'Email Not Confirmed',
+            'Please check your email and click the confirmation link before signing in.',
+            [{ text: 'OK' }]
+          );
+        } else if (error.message.includes('Invalid login credentials')) {
+          Alert.alert(
+            'Invalid Credentials',
+            'The email or password you entered is incorrect. Please try again.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert(
+            'Login Failed',
+            error.message || 'An error occurred during login. Please try again.',
+            [{ text: 'OK' }]
+          );
+        }
+        
+        throw error;
+      }
+
+      if (data.user) {
+        console.log('Login successful:', data.user.id);
+        await loadUserData(data.user.id);
+        
+        Alert.alert(
+          'Welcome Back!',
+          'You have successfully signed in.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Login exception:', error);
+      throw error;
     }
   };
 
   const signup = async (email: string, password: string, name: string, role: UserRole) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: 'https://natively.dev/email-confirmed',
-        data: {
-          name,
-          role,
+    try {
+      console.log('Attempting signup for:', email, 'as', role);
+      
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: 'https://natively.dev/email-confirmed',
+          data: {
+            name,
+            role,
+          },
         },
-      },
-    });
+      });
 
-    if (error) throw error;
-
-    if (data.user) {
-      // Create profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          user_id: data.user.id,
-          email,
-          name,
-          role,
-        });
-
-      if (profileError) throw profileError;
-
-      // Create organization if provider
-      if (role === 'provider') {
-        const { error: orgError } = await supabase
-          .from('organizations')
-          .insert({
-            owner_id: data.user.id,
-            business_name: `${name}'s Business`,
-          });
-
-        if (orgError) throw orgError;
+      if (error) {
+        console.error('Signup error:', error);
+        Alert.alert(
+          'Signup Failed',
+          error.message || 'An error occurred during signup. Please try again.',
+          [{ text: 'OK' }]
+        );
+        throw error;
       }
 
-      await loadUserData(data.user.id);
+      if (data.user) {
+        console.log('Signup successful:', data.user.id);
+        
+        // Create profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: data.user.id,
+            email,
+            name,
+            role,
+          });
+
+        if (profileError) {
+          console.error('Profile creation error:', profileError);
+          throw profileError;
+        }
+
+        // Create organization if provider
+        if (role === 'provider') {
+          const { error: orgError } = await supabase
+            .from('organizations')
+            .insert({
+              owner_id: data.user.id,
+              business_name: `${name}'s Business`,
+            });
+
+          if (orgError) {
+            console.error('Organization creation error:', orgError);
+            throw orgError;
+          }
+        }
+
+        // Show email confirmation alert
+        Alert.alert(
+          'Account Created!',
+          'Please check your email and click the confirmation link to verify your account before signing in.',
+          [{ text: 'OK' }]
+        );
+
+        await loadUserData(data.user.id);
+      }
+    } catch (error) {
+      console.error('Signup exception:', error);
+      throw error;
     }
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
-    setOrganization(null);
-    setSession(null);
+    try {
+      console.log('Logging out');
+      await supabase.auth.signOut();
+      setUser(null);
+      setProfile(null);
+      setOrganization(null);
+      setSession(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   const updateUser = (updates: Partial<User>) => {
@@ -172,6 +257,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!profile) return;
 
     try {
+      console.log('Switching profile to:', role);
+      
       // Update profile role
       const { error } = await supabase
         .from('profiles')
@@ -201,8 +288,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       await refreshProfile();
+      
+      Alert.alert(
+        'Profile Switched',
+        `You are now using your ${role} profile.`,
+        [{ text: 'OK' }]
+      );
     } catch (error) {
       console.error('Error switching profile:', error);
+      Alert.alert(
+        'Switch Failed',
+        'Unable to switch profile. Please try again.',
+        [{ text: 'OK' }]
+      );
       throw error;
     }
   };

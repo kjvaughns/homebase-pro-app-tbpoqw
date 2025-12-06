@@ -1,5 +1,5 @@
 
-import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 // HomeBase Official Brand Colors
 export const colors = {

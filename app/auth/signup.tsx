@@ -6,6 +6,7 @@ import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function SignupScreen() {
   const { role } = useLocalSearchParams<{ role: UserRole }>();
@@ -25,12 +26,9 @@ export default function SignupScreen() {
     setLoading(true);
     try {
       await signup(email, password, name, role || 'homeowner');
-      // Navigation will be handled by the auth context
-      if (role === 'provider') {
-        router.replace('/(provider)/(tabs)');
-      } else {
-        router.replace('/(homeowner)/(tabs)');
-      }
+      
+      // Don't auto-navigate - user needs to confirm email first
+      // The alert in AuthContext will inform them
     } catch (error) {
       console.error('Signup error:', error);
     } finally {
@@ -43,6 +41,13 @@ export default function SignupScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <LinearGradient
+        colors={['#050505', '#083322', '#050505']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      
       <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity
@@ -56,6 +61,18 @@ export default function SignupScreen() {
               color={colors.text}
             />
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.logoContainer}>
+          <View style={styles.logo}>
+            <IconSymbol
+              ios_icon_name="house.fill"
+              android_material_icon_name="home"
+              size={48}
+              color={colors.primary}
+            />
+          </View>
+          <Text style={styles.brandTitle}>HomeBase Pro</Text>
         </View>
 
         <Text style={styles.title}>Create your account</Text>
@@ -73,6 +90,7 @@ export default function SignupScreen() {
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
+              editable={!loading}
             />
           </View>
 
@@ -86,6 +104,7 @@ export default function SignupScreen() {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
+              editable={!loading}
             />
           </View>
 
@@ -98,6 +117,7 @@ export default function SignupScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              editable={!loading}
             />
           </View>
 
@@ -138,6 +158,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.glass,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: colors.primaryDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    boxShadow: '0px 8px 24px rgba(15, 175, 110, 0.3)',
+  },
+  brandTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
   },
   title: {
     fontSize: 32,

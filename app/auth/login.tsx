@@ -1,17 +1,17 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { router } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function LoginScreen() {
-  const { login } = useAuth();
+  const { login, profile } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'provider' | 'homeowner'>('homeowner');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
@@ -22,13 +22,16 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      await login(email, password, role);
-      // Navigation will be handled by the auth context
-      if (role === 'provider') {
-        router.replace('/(provider)/(tabs)');
-      } else {
-        router.replace('/(homeowner)/(tabs)');
-      }
+      await login(email, password);
+      
+      // Wait a moment for profile to load, then navigate based on role
+      setTimeout(() => {
+        if (profile?.role === 'provider') {
+          router.replace('/(provider)/(tabs)');
+        } else {
+          router.replace('/(homeowner)/(tabs)');
+        }
+      }, 500);
     } catch (error) {
       console.error('Login error:', error);
     } finally {
@@ -41,6 +44,13 @@ export default function LoginScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <LinearGradient
+        colors={['#050505', '#083322', '#050505']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      
       <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity
@@ -56,27 +66,20 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.logoContainer}>
+          <View style={styles.logo}>
+            <IconSymbol
+              ios_icon_name="house.fill"
+              android_material_icon_name="home"
+              size={48}
+              color={colors.primary}
+            />
+          </View>
+          <Text style={styles.brandTitle}>HomeBase Pro</Text>
+        </View>
+
         <Text style={styles.title}>Welcome back</Text>
         <Text style={styles.subtitle}>Sign in to your account</Text>
-
-        <View style={styles.roleSelector}>
-          <TouchableOpacity
-            style={[styles.roleButton, role === 'homeowner' && styles.roleButtonActive]}
-            onPress={() => setRole('homeowner')}
-          >
-            <Text style={[styles.roleText, role === 'homeowner' && styles.roleTextActive]}>
-              Homeowner
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.roleButton, role === 'provider' && styles.roleButtonActive]}
-            onPress={() => setRole('provider')}
-          >
-            <Text style={[styles.roleText, role === 'provider' && styles.roleTextActive]}>
-              Provider
-            </Text>
-          </TouchableOpacity>
-        </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
@@ -89,6 +92,7 @@ export default function LoginScreen() {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
+              editable={!loading}
             />
           </View>
 
@@ -101,6 +105,7 @@ export default function LoginScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              editable={!loading}
             />
           </View>
 
@@ -142,6 +147,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: colors.primaryDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    boxShadow: '0px 8px 24px rgba(15, 175, 110, 0.3)',
+  },
+  brandTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
   title: {
     fontSize: 32,
     fontWeight: '800',
@@ -152,30 +177,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     marginBottom: 24,
-  },
-  roleSelector: {
-    flexDirection: 'row',
-    backgroundColor: colors.glass,
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 24,
-  },
-  roleButton: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  roleButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  roleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  roleTextActive: {
-    color: colors.text,
   },
   form: {
     gap: 16,

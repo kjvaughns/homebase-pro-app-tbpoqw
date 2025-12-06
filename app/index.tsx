@@ -8,10 +8,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 
 export default function WelcomeScreen() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, loading } = useAuth();
 
   useEffect(() => {
-    if (isAuthenticated && user) {
+    if (!loading && isAuthenticated && user) {
+      console.log('User authenticated, redirecting to:', user.role);
       // Redirect to appropriate dashboard based on role
       if (user.role === 'provider') {
         router.replace('/(provider)/(tabs)');
@@ -19,7 +20,32 @@ export default function WelcomeScreen() {
         router.replace('/(homeowner)/(tabs)');
       }
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, loading]);
+
+  // Show loading state while checking auth
+  if (loading) {
+    return (
+      <View style={[commonStyles.container, styles.container]}>
+        <LinearGradient
+          colors={['#050505', '#083322', '#050505']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <View style={styles.logoContainer}>
+          <View style={styles.logo}>
+            <IconSymbol
+              ios_icon_name="house.fill"
+              android_material_icon_name="home"
+              size={64}
+              color={colors.primary}
+            />
+          </View>
+          <Text style={styles.title}>HomeBase Pro</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[commonStyles.container, styles.container]}>
@@ -132,6 +158,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
+    paddingHorizontal: 20,
   },
   features: {
     marginBottom: 48,
