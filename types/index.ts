@@ -194,10 +194,16 @@ export interface Notification {
 
 export interface Home {
   id: string;
-  homeownerId: string;
+  homeowner_id: string;
   address: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  property_type?: string;
   nickname?: string;
-  isPrimary: boolean;
+  is_primary: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ClientFile {
@@ -209,5 +215,79 @@ export interface ClientFile {
   file_type?: string;
   file_size?: number;
   uploaded_by?: string;
+  created_at: string;
+}
+
+export interface Review {
+  id: string;
+  booking_id: string;
+  organization_id: string;
+  homeowner_id: string;
+  rating: number;
+  comment?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FavoriteProvider {
+  id: string;
+  homeowner_id: string;
+  organization_id: string;
+  created_at: string;
+}
+
+export interface Subscription {
+  id: string;
+  homeowner_id: string;
+  organization_id: string;
+  service_id?: string;
+  plan_name: string;
+  frequency: 'weekly' | 'biweekly' | 'monthly' | 'quarterly';
+  price: number;
+  status: 'active' | 'paused' | 'cancelled';
+  next_service_date?: string;
+  stripe_subscription_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MaintenanceReminder {
+  id: string;
+  home_id: string;
+  homeowner_id: string;
+  title: string;
+  description?: string;
+  due_date: string;
+  completed: boolean;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortfolioImage {
+  id: string;
+  organization_id: string;
+  image_url: string;
+  caption?: string;
+  created_at: string;
+}
+
+export interface IntakeQuestion {
+  id: string;
+  organization_id: string;
+  service_id: string;
+  question: string;
+  question_type: 'text' | 'textarea' | 'select' | 'multiselect' | 'number' | 'date' | 'file';
+  options?: any;
+  required: boolean;
+  order_index: number;
+  created_at: string;
+}
+
+export interface BookingResponse {
+  id: string;
+  booking_id: string;
+  question_id: string;
+  response: string;
   created_at: string;
 }

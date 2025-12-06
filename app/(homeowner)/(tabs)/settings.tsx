@@ -108,86 +108,132 @@ export default function HomeownerSettings() {
           </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[commonStyles.glassCard, styles.menuItem]}>
-          <IconSymbol
-            ios_icon_name="person.fill"
-            android_material_icon_name="person"
-            size={20}
-            color={colors.text}
-          />
-          <Text style={styles.menuText}>Edit Profile</Text>
-          <IconSymbol
-            ios_icon_name="chevron.right"
-            android_material_icon_name="chevron-right"
-            size={20}
-            color={colors.textSecondary}
-          />
+        <TouchableOpacity onPress={() => router.push('/homeowner/profile/edit')}>
+          <GlassView style={styles.menuItem}>
+            <IconSymbol
+              ios_icon_name="person.fill"
+              android_material_icon_name="person"
+              size={20}
+              color={colors.text}
+            />
+            <Text style={styles.menuText}>Edit Profile</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[commonStyles.glassCard, styles.menuItem]}>
-          <IconSymbol
-            ios_icon_name="house.fill"
-            android_material_icon_name="home"
-            size={20}
-            color={colors.text}
-          />
-          <Text style={styles.menuText}>My Homes</Text>
-          <IconSymbol
-            ios_icon_name="chevron.right"
-            android_material_icon_name="chevron-right"
-            size={20}
-            color={colors.textSecondary}
-          />
+        <TouchableOpacity onPress={() => router.push('/homeowner/homes/')}>
+          <GlassView style={styles.menuItem}>
+            <IconSymbol
+              ios_icon_name="house.fill"
+              android_material_icon_name="home"
+              size={20}
+              color={colors.text}
+            />
+            <Text style={styles.menuText}>My Homes</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[commonStyles.glassCard, styles.menuItem]}>
-          <IconSymbol
-            ios_icon_name="creditcard.fill"
-            android_material_icon_name="payment"
-            size={20}
-            color={colors.text}
-          />
-          <Text style={styles.menuText}>Payment Methods</Text>
-          <IconSymbol
-            ios_icon_name="chevron.right"
-            android_material_icon_name="chevron-right"
-            size={20}
-            color={colors.textSecondary}
-          />
+        <TouchableOpacity onPress={() => router.push('/homeowner/my-providers')}>
+          <GlassView style={styles.menuItem}>
+            <IconSymbol
+              ios_icon_name="star.fill"
+              android_material_icon_name="star"
+              size={20}
+              color={colors.text}
+            />
+            <Text style={styles.menuText}>My Providers</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </GlassView>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.push('/homeowner/subscriptions')}>
+          <GlassView style={styles.menuItem}>
+            <IconSymbol
+              ios_icon_name="repeat"
+              android_material_icon_name="repeat"
+              size={20}
+              color={colors.text}
+            />
+            <Text style={styles.menuText}>Subscriptions</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </GlassView>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.push('/homeowner/payment-methods')}>
+          <GlassView style={styles.menuItem}>
+            <IconSymbol
+              ios_icon_name="creditcard.fill"
+              android_material_icon_name="payment"
+              size={20}
+              color={colors.text}
+            />
+            <Text style={styles.menuText}>Payment Methods</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </GlassView>
         </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Preferences</Text>
-        <TouchableOpacity style={[commonStyles.glassCard, styles.menuItem]}>
-          <IconSymbol
-            ios_icon_name="bell.fill"
-            android_material_icon_name="notifications"
-            size={20}
-            color={colors.text}
-          />
-          <Text style={styles.menuText}>Notifications</Text>
-          <IconSymbol
-            ios_icon_name="chevron.right"
-            android_material_icon_name="chevron-right"
-            size={20}
-            color={colors.textSecondary}
-          />
+        <TouchableOpacity onPress={() => router.push('/homeowner/notifications')}>
+          <GlassView style={styles.menuItem}>
+            <IconSymbol
+              ios_icon_name="bell.fill"
+              android_material_icon_name="notifications"
+              size={20}
+              color={colors.text}
+            />
+            <Text style={styles.menuText}>Notifications</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </GlassView>
         </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
         <TouchableOpacity
-          style={[commonStyles.glassCard, styles.menuItem, styles.logoutButton]}
+          style={[styles.logoutButton]}
           onPress={handleLogout}
         >
-          <IconSymbol
-            ios_icon_name="arrow.right.square.fill"
-            android_material_icon_name="logout"
-            size={20}
-            color={colors.error}
-          />
-          <Text style={[styles.menuText, { color: colors.error }]}>Logout</Text>
+          <GlassView style={[styles.menuItem, { borderColor: colors.error + '30' }]}>
+            <IconSymbol
+              ios_icon_name="arrow.right.square.fill"
+              android_material_icon_name="logout"
+              size={20}
+              color={colors.error}
+            />
+            <Text style={[styles.menuText, { color: colors.error }]}>Logout</Text>
+          </GlassView>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -279,7 +325,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    marginBottom: 8,
     gap: 12,
   },
   menuTextContainer: {
@@ -297,6 +342,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   logoutButton: {
-    borderColor: colors.error + '30',
+    marginBottom: 8,
   },
 });
