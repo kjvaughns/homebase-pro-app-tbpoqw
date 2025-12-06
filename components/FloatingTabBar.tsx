@@ -126,30 +126,29 @@ export default function FloatingTabBar({
                 const isActive = activeTabIndex === index;
 
                 return (
-                  <React.Fragment key={index}>
-                    <TouchableOpacity
-                      style={styles.tab}
-                      onPress={() => handleTabPress(tab.route)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.tabContent}>
-                        <IconSymbol
-                          android_material_icon_name={tab.icon}
-                          ios_icon_name={tab.icon}
-                          size={24}
-                          color={isActive ? colors.primary : 'rgba(255, 255, 255, 0.7)'}
-                        />
-                        <Text
-                          style={[
-                            styles.tabLabel,
-                            isActive && styles.tabLabelActive,
-                          ]}
-                        >
-                          {tab.label}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  </React.Fragment>
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.tab}
+                    onPress={() => handleTabPress(tab.route)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.tabContent}>
+                      <IconSymbol
+                        android_material_icon_name={tab.icon}
+                        ios_icon_name={tab.icon}
+                        size={24}
+                        color={isActive ? colors.primary : colors.text}
+                      />
+                      <Text
+                        style={[
+                          styles.tabLabel,
+                          isActive && styles.tabLabelActive,
+                        ]}
+                      >
+                        {tab.label}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -213,7 +212,7 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: colors.text,
     marginTop: 2,
     textShadowColor: 'rgba(0, 0, 0, 1)',
     textShadowOffset: { width: 0, height: 1 },
@@ -221,7 +220,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter',
   },
   tabLabelActive: {
-    color: colors.text,
+    color: colors.primary,
     fontWeight: '700',
   },
 });

@@ -8,10 +8,17 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 
+interface Integration {
+  type: string;
+  name: string;
+  description: string;
+  status: 'connected' | 'coming_soon' | 'disabled';
+}
+
 export default function IntegrationsScreen() {
   const { organization } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [integrations, setIntegrations] = useState<any[]>([]);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
 
   useEffect(() => {
     loadIntegrations();
@@ -22,25 +29,49 @@ export default function IntegrationsScreen() {
 
     try {
       setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
       
-      const response = await fetch(
-        `https://qjuilxfvqvmoqykpdugi.supabase.co/functions/v1/manage-integrations`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'get_integrations',
-            org_id: organization.id,
-          }),
-        }
-      );
+      // Load integrations from database
+      const { data: dbIntegrations, error } = await supabase
+        .from('integrations')
+        .select('*')
+        .eq('org_id', organization.id);
 
-      const result = await response.json();
-      setIntegrations(result.integrations || []);
+      if (error) {
+        console.error('Error loading integrations:', error);
+      }
+
+      // Default integrations list
+      const defaultIntegrations: Integration[] = [
+        {
+          type: 'google_calendar',
+          name: 'Google Calendar',
+          description: 'Sync jobs with your Google Calendar',
+          status: 'coming_soon',
+        },
+        {
+          type: 'quickbooks',
+          name: 'QuickBooks',
+          description: 'Sync invoices and payments',
+          status: 'coming_soon',
+        },
+        {
+          type: 'zapier',
+          name: 'Zapier',
+          description: 'Connect to 5000+ apps',
+          status: 'coming_soon',
+        },
+      ];
+
+      // Merge with database data
+      const mergedIntegrations = defaultIntegrations.map(defaultInt => {
+        const dbInt = dbIntegrations?.find(db => db.type === defaultInt.type);
+        return {
+          ...defaultInt,
+          status: dbInt?.status || defaultInt.status,
+        };
+      });
+
+      setIntegrations(mergedIntegrations);
     } catch (error) {
       console.error('Error loading integrations:', error);
       Alert.alert('Error', 'Failed to load integrations');
@@ -50,46 +81,23 @@ export default function IntegrationsScreen() {
   };
 
   const handleConnect = async (integrationType: string) => {
-    if (!organization) return;
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(
-        `https://qjuilxfvqvmoqykpdugi.supabase.co/functions/v1/manage-integrations`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'start_calendar_sync',
-            org_id: organization.id,
-            integration_type: integrationType,
-          }),
-        }
-      );
-
-      const result = await response.json();
-      Alert.alert('Coming Soon', result.message || 'This integration is coming soon!');
-      loadIntegrations();
-    } catch (error) {
-      console.error('Error connecting integration:', error);
-      Alert.alert('Error', 'Failed to connect integration');
-    }
+    Alert.alert(
+      'Coming Soon',
+      `${integrationType} integration is coming soon! We're working hard to bring you this feature.`,
+      [{ text: 'OK' }]
+    );
   };
 
   const getIntegrationIcon = (type: string) => {
     switch (type) {
       case 'google_calendar':
-        return { ios: 'calendar', android: 'event' };
+        return { ios: 'event', android: 'event' };
       case 'quickbooks':
-        return { ios: 'chart.bar.fill', android: 'bar-chart' };
+        return { ios: 'bar-chart', android: 'bar-chart' };
       case 'zapier':
-        return { ios: 'bolt.fill', android: 'flash-on' };
+        return { ios: 'flash-on', android: 'flash-on' };
       default:
-        return { ios: 'app.fill', android: 'apps' };
+        return { ios: 'apps', android: 'apps' };
     }
   };
 
@@ -106,6 +114,19 @@ export default function IntegrationsScreen() {
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'connected':
+        return 'Connected';
+      case 'coming_soon':
+        return 'Coming Soon';
+      case 'disabled':
+        return 'Disabled';
+      default:
+        return 'Unknown';
+    }
+  };
+
   if (loading) {
     return (
       <View style={[commonStyles.container, styles.centerContent]}>
@@ -119,7 +140,7 @@ export default function IntegrationsScreen() {
     <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron-left" size={24} color={colors.text} />
+          <IconSymbol ios_icon_name="chevron-left" android_material_icon_name="chevron-left" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Integrations</Text>
         <View style={{ width: 24 }} />
@@ -137,7 +158,7 @@ export default function IntegrationsScreen() {
               key={index}
               onPress={() => {
                 if (integration.status === 'coming_soon') {
-                  handleConnect(integration.type);
+                  handleConnect(integration.name);
                 } else if (integration.status === 'connected') {
                   Alert.alert('Connected', 'This integration is already connected');
                 }
@@ -151,11 +172,11 @@ export default function IntegrationsScreen() {
                   size={40} 
                   color={statusColor} 
                 />
-                <Text style={styles.integrationName}>{integration.name || integration.type}</Text>
-                <Text style={styles.integrationDescription}>{integration.description || ''}</Text>
+                <Text style={styles.integrationName}>{integration.name}</Text>
+                <Text style={styles.integrationDescription}>{integration.description}</Text>
                 <View style={[styles.statusBadge, { backgroundColor: statusColor + '30' }]}>
                   <Text style={[styles.statusText, { color: statusColor }]}>
-                    {integration.status.replace('_', ' ')}
+                    {getStatusLabel(integration.status)}
                   </Text>
                 </View>
               </GlassView>
@@ -165,7 +186,7 @@ export default function IntegrationsScreen() {
       </View>
 
       <GlassView style={styles.infoCard}>
-        <IconSymbol ios_icon_name="info.circle.fill" android_material_icon_name="info" size={24} color={colors.accent} />
+        <IconSymbol ios_icon_name="info" android_material_icon_name="info" size={24} color={colors.accent} />
         <View style={styles.infoContent}>
           <Text style={styles.infoTitle}>More Integrations Coming Soon</Text>
           <Text style={styles.infoText}>

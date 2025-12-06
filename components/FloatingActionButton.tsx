@@ -30,37 +30,37 @@ export default function FloatingActionButton() {
   const actions: FABAction[] = [
     { 
       label: 'Add Client', 
-      iosIcon: 'person.badge.plus', 
+      iosIcon: 'person-add', 
       androidIcon: 'person-add', 
       route: '/(provider)/clients/add' 
     },
     { 
       label: 'Create Job', 
-      iosIcon: 'calendar.badge.plus', 
+      iosIcon: 'event', 
       androidIcon: 'event', 
       route: '/(provider)/schedule/create-job' 
     },
     { 
       label: 'Send Invoice', 
-      iosIcon: 'doc.text', 
+      iosIcon: 'receipt', 
       androidIcon: 'receipt', 
       route: '/(provider)/money/create-invoice' 
     },
     { 
       label: 'Payment Link', 
-      iosIcon: 'link.circle', 
+      iosIcon: 'link', 
       androidIcon: 'link', 
       route: '/(provider)/money/payment-link' 
     },
     { 
       label: 'Broadcast', 
-      iosIcon: 'megaphone.fill', 
+      iosIcon: 'campaign', 
       androidIcon: 'campaign', 
-      route: '/(provider)/broadcast' 
+      route: '/(provider)/broadcast/index' 
     },
     { 
       label: 'Ask AI', 
-      iosIcon: 'sparkles', 
+      iosIcon: 'auto-awesome', 
       androidIcon: 'auto-awesome', 
       route: '/(provider)/ai-assistant' 
     },
@@ -113,27 +113,26 @@ export default function FloatingActionButton() {
           <BlurView intensity={50} tint="dark" style={styles.blurBackdrop}>
             <View style={styles.menuContainer}>
               {actions.map((action, index) => (
-                <React.Fragment key={index}>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => handleActionPress(action.route)}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.actionContent}>
-                      <View style={styles.actionLabelContainer}>
-                        <Text style={styles.actionLabel}>{action.label}</Text>
-                      </View>
-                      <View style={styles.actionIconCircle}>
-                        <IconSymbol
-                          ios_icon_name={action.iosIcon}
-                          android_material_icon_name={action.androidIcon}
-                          size={20}
-                          color={colors.text}
-                        />
-                      </View>
+                <TouchableOpacity
+                  key={index}
+                  style={styles.actionButton}
+                  onPress={() => handleActionPress(action.route)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.actionContent}>
+                    <View style={styles.actionLabelContainer}>
+                      <Text style={styles.actionLabel}>{action.label}</Text>
                     </View>
-                  </TouchableOpacity>
-                </React.Fragment>
+                    <View style={styles.actionIconCircle}>
+                      <IconSymbol
+                        ios_icon_name={action.iosIcon}
+                        android_material_icon_name={action.androidIcon}
+                        size={20}
+                        color={colors.text}
+                      />
+                    </View>
+                  </View>
+                </TouchableOpacity>
               ))}
             </View>
           </BlurView>
@@ -148,7 +147,7 @@ export default function FloatingActionButton() {
           activeOpacity={0.9}
         >
           <IconSymbol
-            ios_icon_name="plus"
+            ios_icon_name="add"
             android_material_icon_name="add"
             size={28}
             color={colors.text}
@@ -163,8 +162,8 @@ const styles = StyleSheet.create({
   fabContainer: {
     position: 'absolute',
     right: 20,
-    bottom: 100,
-    zIndex: 999,
+    bottom: 110,
+    zIndex: 9999,
   },
   fab: {
     width: 64,
@@ -183,14 +182,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingBottom: 120,
+    paddingBottom: 130,
   },
   blurBackdrop: {
     flex: 1,
     width: '100%',
     justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingBottom: 120,
+    paddingBottom: 130,
   },
   menuContainer: {
     width: '85%',

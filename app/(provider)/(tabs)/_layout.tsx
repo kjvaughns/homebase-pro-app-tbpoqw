@@ -33,7 +33,7 @@ export default function ProviderTabLayout() {
   ];
 
   return (
-    <>
+    <React.Fragment>
       <Stack
         screenOptions={{
           headerShown: false,
@@ -47,6 +47,6 @@ export default function ProviderTabLayout() {
       </Stack>
       <FloatingActionButton />
       <FloatingTabBar tabs={tabs} />
-    </>
+    </React.Fragment>
   );
 }

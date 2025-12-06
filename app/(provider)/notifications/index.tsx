@@ -1,79 +1,105 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
-import { Notification } from '@/types';
+import { supabase } from '@/app/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+
+interface Notification {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  body: string;
+  data: any;
+  read: boolean;
+  created_at: string;
+}
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const { profile } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadNotifications();
-  }, []);
+  }, [profile]);
 
   const loadNotifications = async () => {
-    // Load from Supabase
-    const mockNotifications: Notification[] = [
-      {
-        id: '1',
-        user_id: '1',
-        type: 'booking',
-        title: 'New Booking Request',
-        body: 'John Smith requested a booking for General Repairs',
-        data: {},
-        read: false,
-        created_at: new Date().toISOString(),
-      },
-      {
-        id: '2',
-        user_id: '1',
-        type: 'payment',
-        title: 'Payment Received',
-        body: 'You received $150 from Sarah Johnson',
-        data: {},
-        read: false,
-        created_at: new Date(Date.now() - 3600000).toISOString(),
-      },
-      {
-        id: '3',
-        user_id: '1',
-        type: 'reminder',
-        title: 'Upcoming Job',
-        body: 'You have a job scheduled tomorrow at 9:00 AM',
-        data: {},
-        read: true,
-        created_at: new Date(Date.now() - 86400000).toISOString(),
-      },
-    ];
-    setNotifications(mockNotifications);
+    if (!profile) return;
+
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('Error loading notifications:', error);
+      } else {
+        setNotifications(data || []);
+      }
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const markAsRead = async (notificationId: string) => {
-    setNotifications(notifications.map(n => 
-      n.id === notificationId ? { ...n, read: true } : n
-    ));
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notificationId);
+
+      if (!error) {
+        setNotifications(notifications.map(n => 
+          n.id === notificationId ? { ...n, read: true } : n
+        ));
+      }
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
   };
 
   const markAllAsRead = async () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
+    if (!profile) return;
+
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', profile.id)
+        .eq('read', false);
+
+      if (!error) {
+        setNotifications(notifications.map(n => ({ ...n, read: true })));
+      }
+    } catch (error) {
+      console.error('Error marking all as read:', error);
+    }
   };
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'booking':
-        return { ios: 'calendar.badge.plus', android: 'event' };
+        return { ios: 'event', android: 'event' };
       case 'payment':
-        return { ios: 'dollarsign.circle.fill', android: 'attach-money' };
+        return { ios: 'attach-money', android: 'attach-money' };
       case 'reminder':
-        return { ios: 'bell.fill', android: 'notifications' };
+        return { ios: 'notifications', android: 'notifications' };
       case 'message':
-        return { ios: 'message.fill', android: 'message' };
+        return { ios: 'message', android: 'message' };
       default:
-        return { ios: 'bell.fill', android: 'notifications' };
+        return { ios: 'notifications', android: 'notifications' };
     }
   };
 
@@ -90,12 +116,21 @@ export default function NotificationsScreen() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  if (loading) {
+    return (
+      <View style={[commonStyles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading notifications...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={commonStyles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow-back" size={24} color={colors.text} />
+            <IconSymbol ios_icon_name="chevron-left" android_material_icon_name="chevron-left" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.headerTitle}>
             <Text style={styles.title}>Notifications</Text>
@@ -105,9 +140,12 @@ export default function NotificationsScreen() {
               </View>
             )}
           </View>
-          <TouchableOpacity onPress={markAllAsRead}>
-            <Text style={styles.markAllRead}>Mark all read</Text>
-          </TouchableOpacity>
+          {unreadCount > 0 && (
+            <TouchableOpacity onPress={markAllAsRead}>
+              <Text style={styles.markAllRead}>Mark all read</Text>
+            </TouchableOpacity>
+          )}
+          {unreadCount === 0 && <View style={{ width: 24 }} />}
         </View>
 
         {notifications.length > 0 ? (
@@ -146,8 +184,9 @@ export default function NotificationsScreen() {
           </View>
         ) : (
           <GlassView style={styles.emptyState}>
-            <IconSymbol ios_icon_name="bell.slash" android_material_icon_name="notifications-off" size={64} color={colors.textSecondary} />
+            <IconSymbol ios_icon_name="notifications-off" android_material_icon_name="notifications-off" size={64} color={colors.textSecondary} />
             <Text style={styles.emptyText}>No notifications yet</Text>
+            <Text style={styles.emptySubtext}>We'll notify you when something important happens</Text>
           </GlassView>
         )}
       </ScrollView>
@@ -159,7 +198,17 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 120,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 12,
   },
   header: {
     flexDirection: 'row',
@@ -168,12 +217,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.glass,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 8,
   },
   headerTitle: {
     flexDirection: 'row',
@@ -181,8 +225,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '700',
     color: colors.text,
   },
   badge: {
@@ -259,8 +303,15 @@ const styles = StyleSheet.create({
     marginTop: 40,
   },
   emptyText: {
-    fontSize: 16,
-    color: colors.textSecondary,
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
     marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 });

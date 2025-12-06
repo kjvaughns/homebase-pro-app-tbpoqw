@@ -1,5 +1,5 @@
 
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Platform } from 'react-native';
 
 // HomeBase Official Brand Colors - Clean Liquid Glass UI
 export const colors = {
@@ -14,7 +14,6 @@ export const colors = {
   success: '#0FAF6E',           // Same as primary
   warning: '#FF9500',           // Neutral orange for warnings
   error: '#FF3B30',             // Red for errors
-  // Removed all blue/cyan/yellow accents
   accent: '#0FAF6E',            // Use primary green for all accents
   highlight: '#0FAF6E',         // Use primary green for highlights
 };
@@ -139,5 +138,20 @@ export const commonStyles = StyleSheet.create({
   icon: {
     width: 60,
     height: 60,
+  },
+  // Safe area helpers
+  safeAreaTop: {
+    paddingTop: Platform.select({
+      ios: 60,
+      android: 48,
+      default: 60,
+    }),
+  },
+  safeAreaBottom: {
+    paddingBottom: Platform.select({
+      ios: 140,
+      android: 120,
+      default: 120,
+    }),
   },
 });
