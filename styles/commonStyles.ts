@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 
 // HomeBase Official Brand Colors
 export const colors = {
-  primary: '#0FAF6E',        // HomeBase Green
+  primary: '#16b25e',        // HomeBase Green (Updated to match logo)
   primaryDark: '#083322',    // Dark Green
   background: '#050505',     // Dark Background
   glass: 'rgba(255,255,255,0.05)',
@@ -13,7 +13,7 @@ export const colors = {
   textSecondary: '#A0A0A0',
   card: 'rgba(255,255,255,0.05)',
   highlight: '#00F0FF',
-  success: '#0FAF6E',
+  success: '#16b25e',        // Updated to match logo
   warning: '#FFA500',
   error: '#FF4444',
 };

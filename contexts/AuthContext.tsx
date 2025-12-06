@@ -350,15 +350,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('Switching profile to:', role);
       
-      // Update profile role
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role })
-        .eq('id', profile.id);
-
-      if (error) throw error;
-
-      // If switching to provider and no organization exists, create one
+      // Check if switching to provider and no organization exists
       if (role === 'provider') {
         const { data: existingOrg } = await supabase
           .from('organizations')
@@ -367,16 +359,147 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .single();
 
         if (!existingOrg) {
-          const { error: orgError } = await supabase
-            .from('organizations')
-            .insert({
-              owner_id: profile.id,
-              business_name: `${profile.name}'s Business`,
-            });
+          // Show alert asking if they want to create a provider account
+          Alert.alert(
+            'Create Provider Account',
+            'You don\'t have a provider account yet. Would you like to create one?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Create Account',
+                onPress: async () => {
+                  try {
+                    // Update profile role
+                    const { error: roleError } = await supabase
+                      .from('profiles')
+                      .update({ role: 'provider' })
+                      .eq('id', profile.id);
 
-          if (orgError) throw orgError;
+                    if (roleError) throw roleError;
+
+                    // Create organization
+                    const { error: orgError } = await supabase
+                      .from('organizations')
+                      .insert({
+                        owner_id: profile.id,
+                        business_name: `${profile.name}'s Business`,
+                        onboarding_completed: false,
+                      });
+
+                    if (orgError) throw orgError;
+
+                    await refreshProfile();
+
+                    Alert.alert(
+                      'Provider Account Created',
+                      'Let\'s set up your business profile!',
+                      [{ 
+                        text: 'Continue',
+                        onPress: () => {
+                          router.replace('/(provider)/onboarding/business-basics');
+                        }
+                      }]
+                    );
+                  } catch (error) {
+                    console.error('Error creating provider account:', error);
+                    Alert.alert('Error', 'Failed to create provider account. Please try again.');
+                  }
+                }
+              }
+            ]
+          );
+          return;
+        } else {
+          // Organization exists, check if onboarding is completed
+          if (!existingOrg.onboarding_completed) {
+            Alert.alert(
+              'Complete Onboarding',
+              'Please complete your provider onboarding first.',
+              [{ 
+                text: 'Continue',
+                onPress: async () => {
+                  // Update role
+                  await supabase
+                    .from('profiles')
+                    .update({ role: 'provider' })
+                    .eq('id', profile.id);
+                  
+                  await refreshProfile();
+                  router.replace('/(provider)/onboarding/business-basics');
+                }
+              }]
+            );
+            return;
+          }
         }
       }
+
+      // Check if switching to homeowner and no home exists
+      if (role === 'homeowner') {
+        const { data: existingHomes } = await supabase
+          .from('homes')
+          .select('*')
+          .eq('homeowner_id', profile.id);
+
+        if (!existingHomes || existingHomes.length === 0) {
+          // Show alert asking if they want to create a homeowner account
+          Alert.alert(
+            'Create Homeowner Account',
+            'You don\'t have any homes added yet. Would you like to add your first home?',
+            [
+              { text: 'Skip for Now', onPress: async () => {
+                // Update role and navigate
+                await supabase
+                  .from('profiles')
+                  .update({ role: 'homeowner' })
+                  .eq('id', profile.id);
+                
+                await refreshProfile();
+                router.replace('/(homeowner)/(tabs)');
+              }},
+              {
+                text: 'Add Home',
+                onPress: async () => {
+                  try {
+                    // Update profile role
+                    const { error: roleError } = await supabase
+                      .from('profiles')
+                      .update({ role: 'homeowner' })
+                      .eq('id', profile.id);
+
+                    if (roleError) throw roleError;
+
+                    await refreshProfile();
+
+                    Alert.alert(
+                      'Homeowner Account Ready',
+                      'Let\'s add your first home!',
+                      [{ 
+                        text: 'Continue',
+                        onPress: () => {
+                          router.replace('/(homeowner)/onboarding/profile');
+                        }
+                      }]
+                    );
+                  } catch (error) {
+                    console.error('Error creating homeowner account:', error);
+                    Alert.alert('Error', 'Failed to create homeowner account. Please try again.');
+                  }
+                }
+              }
+            ]
+          );
+          return;
+        }
+      }
+
+      // Update profile role
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role })
+        .eq('id', profile.id);
+
+      if (error) throw error;
 
       await refreshProfile();
       
