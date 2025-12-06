@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Image, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 const HOMEBASE_LOGO = require('@/assets/images/6136aa2f-9e1a-404d-8c64-88ff07e19023.png');
 
 export default function LoginScreen() {
-  const { login, profile } = useAuth();
+  const { login, loading: authLoading } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,21 +25,15 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await login(email, password);
-      
-      // Wait a moment for profile to load, then navigate based on role
-      setTimeout(() => {
-        if (profile?.role === 'provider') {
-          router.replace('/(provider)/(tabs)');
-        } else {
-          router.replace('/(homeowner)/(tabs)');
-        }
-      }, 500);
+      // Navigation is handled in the login function
     } catch (error) {
       console.error('Login error:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  const isLoading = loading || authLoading;
 
   return (
     <KeyboardAvoidingView
@@ -58,6 +52,7 @@ export default function LoginScreen() {
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.back()}
+            disabled={isLoading}
           >
             <IconSymbol
               ios_icon_name="chevron.left"
@@ -91,7 +86,7 @@ export default function LoginScreen() {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
-              editable={!loading}
+              editable={!isLoading}
             />
           </View>
 
@@ -104,23 +99,28 @@ export default function LoginScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
-              editable={!loading}
+              editable={!isLoading}
             />
           </View>
 
           <TouchableOpacity
-            style={[buttonStyles.primaryButton, styles.button, loading && styles.buttonDisabled]}
+            style={[buttonStyles.primaryButton, styles.button, isLoading && styles.buttonDisabled]}
             onPress={handleLogin}
-            disabled={loading}
+            disabled={isLoading}
           >
-            <Text style={buttonStyles.buttonText}>
-              {loading ? 'Signing In...' : 'Sign In'}
-            </Text>
+            {isLoading ? (
+              <ActivityIndicator color={colors.text} />
+            ) : (
+              <Text style={buttonStyles.buttonText}>Sign In</Text>
+            )}
           </TouchableOpacity>
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>Don&apos;t have an account? </Text>
-            <TouchableOpacity onPress={() => router.push('/auth/role-selection')}>
+            <TouchableOpacity 
+              onPress={() => router.push('/auth/role-selection')}
+              disabled={isLoading}
+            >
               <Text style={styles.link}>Sign Up</Text>
             </TouchableOpacity>
           </View>

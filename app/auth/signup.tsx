@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, Image, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -12,7 +12,7 @@ const HOMEBASE_LOGO = require('@/assets/images/6136aa2f-9e1a-404d-8c64-88ff07e19
 
 export default function SignupScreen() {
   const { role } = useLocalSearchParams<{ role: UserRole }>();
-  const { signup, profile } = useAuth();
+  const { signup, loading: authLoading } = useAuth();
   
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -25,24 +25,23 @@ export default function SignupScreen() {
       return;
     }
 
+    if (password.length < 6) {
+      alert('Password must be at least 6 characters long');
+      return;
+    }
+
     setLoading(true);
     try {
       await signup(email, password, name, role || 'homeowner');
-      
-      // Navigate to appropriate dashboard after successful signup
-      setTimeout(() => {
-        if (profile?.role === 'provider' || role === 'provider') {
-          router.replace('/(provider)/(tabs)');
-        } else {
-          router.replace('/(homeowner)/(tabs)');
-        }
-      }, 500);
+      // Navigation is handled in the signup function
     } catch (error) {
       console.error('Signup error:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  const isLoading = loading || authLoading;
 
   return (
     <KeyboardAvoidingView
@@ -61,6 +60,7 @@ export default function SignupScreen() {
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.back()}
+            disabled={isLoading}
           >
             <IconSymbol
               ios_icon_name="chevron.left"
@@ -95,7 +95,7 @@ export default function SignupScreen() {
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
-              editable={!loading}
+              editable={!isLoading}
             />
           </View>
 
@@ -109,7 +109,7 @@ export default function SignupScreen() {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
-              editable={!loading}
+              editable={!isLoading}
             />
           </View>
 
@@ -122,23 +122,29 @@ export default function SignupScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
-              editable={!loading}
+              editable={!isLoading}
             />
+            <Text style={styles.hint}>Must be at least 6 characters</Text>
           </View>
 
           <TouchableOpacity
-            style={[buttonStyles.primaryButton, styles.button, loading && styles.buttonDisabled]}
+            style={[buttonStyles.primaryButton, styles.button, isLoading && styles.buttonDisabled]}
             onPress={handleSignup}
-            disabled={loading}
+            disabled={isLoading}
           >
-            <Text style={buttonStyles.buttonText}>
-              {loading ? 'Creating Account...' : 'Create Account'}
-            </Text>
+            {isLoading ? (
+              <ActivityIndicator color={colors.text} />
+            ) : (
+              <Text style={buttonStyles.buttonText}>Create Account</Text>
+            )}
           </TouchableOpacity>
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => router.push('/auth/login')}>
+            <TouchableOpacity 
+              onPress={() => router.push('/auth/login')}
+              disabled={isLoading}
+            >
               <Text style={styles.link}>Sign In</Text>
             </TouchableOpacity>
           </View>
@@ -200,6 +206,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+  },
+  hint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
   button: {
     marginTop: 8,

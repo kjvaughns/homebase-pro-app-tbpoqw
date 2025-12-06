@@ -4,6 +4,7 @@ import { User, UserRole, Profile, Organization } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Session } from '@supabase/supabase-js';
 import { Alert } from 'react-native';
+import { router } from 'expo-router';
 
 interface AuthContextType {
   user: User | null;
@@ -42,11 +43,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log('Auth state changed:', _event, session?.user?.id);
       setSession(session);
+      
       if (session?.user) {
-        loadUserData(session.user.id);
+        await loadUserData(session.user.id);
       } else {
         setUser(null);
         setProfile(null);
@@ -58,20 +60,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadUserData = async (userId: string) => {
+  const loadUserData = async (userId: string, retries = 3) => {
     try {
       console.log('Loading user data for:', userId);
       
-      // Load profile
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+      // Load profile with retries (in case trigger hasn't completed yet)
+      let profileData = null;
+      let profileError = null;
+      
+      for (let i = 0; i < retries; i++) {
+        const result = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+        
+        profileData = result.data;
+        profileError = result.error;
+        
+        if (profileData) break;
+        
+        // Wait a bit before retrying
+        if (i < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
 
-      if (profileError) {
-        console.error('Profile error:', profileError);
-        throw profileError;
+      if (profileError && !profileData) {
+        console.error('Profile error after retries:', profileError);
+        setLoading(false);
+        return;
       }
 
       if (profileData) {
@@ -111,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       console.log('Attempting login for:', email);
+      setLoading(true);
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -127,6 +146,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             'The email or password you entered is incorrect. Please try again.',
             [{ text: 'OK' }]
           );
+        } else if (error.message.includes('Email not confirmed')) {
+          Alert.alert(
+            'Email Not Confirmed',
+            'Please check your email and click the confirmation link before logging in. Check your spam folder if you don\'t see it.',
+            [
+              { text: 'OK' },
+              {
+                text: 'Resend Email',
+                onPress: async () => {
+                  const { error: resendError } = await supabase.auth.resend({
+                    type: 'signup',
+                    email: email,
+                  });
+                  if (resendError) {
+                    Alert.alert('Error', 'Failed to resend confirmation email. Please try again later.');
+                  } else {
+                    Alert.alert('Success', 'Confirmation email sent! Please check your inbox.');
+                  }
+                }
+              }
+            ]
+          );
         } else {
           Alert.alert(
             'Login Failed',
@@ -135,21 +176,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
         }
         
+        setLoading(false);
         throw error;
       }
 
-      if (data.user) {
+      if (data.user && data.session) {
         console.log('Login successful:', data.user.id);
+        
+        // Wait for user data to load
         await loadUserData(data.user.id);
         
-        Alert.alert(
-          'Welcome Back!',
-          'You have successfully signed in.',
-          [{ text: 'OK' }]
-        );
+        // Get the loaded profile to determine navigation
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', data.user.id)
+          .single();
+
+        if (profileData) {
+          Alert.alert(
+            'Welcome Back!',
+            'You have successfully signed in.',
+            [{ text: 'OK' }]
+          );
+
+          // Navigate based on role
+          if (profileData.role === 'provider') {
+            router.replace('/(provider)/(tabs)');
+          } else {
+            router.replace('/(homeowner)/(tabs)');
+          }
+        }
       }
     } catch (error) {
       console.error('Login exception:', error);
+      setLoading(false);
       throw error;
     }
   };
@@ -157,8 +218,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = async (email: string, password: string, name: string, role: UserRole) => {
     try {
       console.log('Attempting signup for:', email, 'as', role);
+      setLoading(true);
       
-      // Sign up the user - no email confirmation required
+      // Sign up the user - the database trigger will create the profile
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -177,53 +239,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           error.message || 'An error occurred during signup. Please try again.',
           [{ text: 'OK' }]
         );
+        setLoading(false);
         throw error;
       }
 
       if (data.user) {
         console.log('Signup successful:', data.user.id);
+        console.log('Session:', data.session ? 'exists' : 'null');
         
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: data.user.id,
-            email,
-            name,
-            role,
-          });
-
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
-          throw profileError;
+        // Check if email confirmation is required
+        if (!data.session) {
+          // Email confirmation is required
+          Alert.alert(
+            'Confirm Your Email',
+            'We\'ve sent a confirmation email to ' + email + '. Please click the link in the email to activate your account, then return here to sign in.',
+            [{ text: 'OK' }]
+          );
+          setLoading(false);
+          
+          // Navigate back to login
+          router.replace('/auth/login');
+          return;
         }
-
-        // Create organization if provider
-        if (role === 'provider') {
-          const { error: orgError } = await supabase
-            .from('organizations')
-            .insert({
-              owner_id: data.user.id,
-              business_name: `${name}'s Business`,
-            });
-
-          if (orgError) {
-            console.error('Organization creation error:', orgError);
-            throw orgError;
-          }
-        }
+        
+        // If we have a session, wait for the trigger to create the profile
+        await loadUserData(data.user.id);
 
         // Show success alert
         Alert.alert(
           'Account Created!',
-          'Your account has been created successfully. You can now sign in.',
+          'Your account has been created successfully.',
           [{ text: 'OK' }]
         );
 
-        await loadUserData(data.user.id);
+        // Navigate to appropriate dashboard
+        if (role === 'provider') {
+          router.replace('/(provider)/(tabs)');
+        } else {
+          router.replace('/(homeowner)/(tabs)');
+        }
       }
     } catch (error) {
       console.error('Signup exception:', error);
+      setLoading(false);
       throw error;
     }
   };
@@ -236,6 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(null);
       setOrganization(null);
       setSession(null);
+      router.replace('/');
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -288,6 +347,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         `You are now using your ${role} profile.`,
         [{ text: 'OK' }]
       );
+
+      // Navigate to appropriate dashboard
+      if (role === 'provider') {
+        router.replace('/(provider)/(tabs)');
+      } else {
+        router.replace('/(homeowner)/(tabs)');
+      }
     } catch (error) {
       console.error('Error switching profile:', error);
       Alert.alert(
@@ -312,7 +378,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         organization,
         session,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && !!session,
         loading,
         login,
         signup,
