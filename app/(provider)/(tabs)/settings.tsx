@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Animated, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
@@ -13,6 +13,7 @@ export default function MoreScreen() {
   const router = useRouter();
   const { user, profile, organization, logout } = useAuth();
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const fadeAnim = useState(new Animated.Value(0))[0];
 
   React.useEffect(() => {
@@ -88,8 +89,20 @@ export default function MoreScreen() {
           text: 'Logout', 
           style: 'destructive',
           onPress: async () => {
-            await logout();
-            router.replace('/auth/login');
+            try {
+              setIsLoggingOut(true);
+              console.log('Settings: Initiating logout...');
+              await logout();
+              console.log('Settings: Logout completed');
+            } catch (error) {
+              console.error('Settings: Logout failed:', error);
+              setIsLoggingOut(false);
+              Alert.alert(
+                'Logout Failed',
+                'There was an error logging out. Please try again.',
+                [{ text: 'OK' }]
+              );
+            }
           }
         },
       ]
@@ -336,9 +349,19 @@ export default function MoreScreen() {
 
       {/* Logout */}
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) }] }}>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <IconSymbol ios_icon_name="arrow.right.square.fill" android_material_icon_name="logout" size={20} color={colors.error} />
-          <Text style={styles.logoutText}>Logout</Text>
+        <TouchableOpacity 
+          style={styles.logoutButton} 
+          onPress={handleLogout}
+          disabled={isLoggingOut}
+        >
+          {isLoggingOut ? (
+            <ActivityIndicator size="small" color={colors.error} />
+          ) : (
+            <React.Fragment>
+              <IconSymbol ios_icon_name="arrow.right.square.fill" android_material_icon_name="logout" size={20} color={colors.error} />
+              <Text style={styles.logoutText}>Logout</Text>
+            </React.Fragment>
+          )}
         </TouchableOpacity>
       </Animated.View>
     </ScrollView>

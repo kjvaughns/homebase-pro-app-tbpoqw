@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -11,6 +11,7 @@ import { AccountSwitcherDropdown } from '@/components/AccountSwitcherDropdown';
 export default function HomeownerSettings() {
   const { user, profile, logout } = useAuth();
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = () => {
     Alert.alert(
@@ -22,8 +23,20 @@ export default function HomeownerSettings() {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            await logout();
-            router.replace('/auth/login');
+            try {
+              setIsLoggingOut(true);
+              console.log('Settings: Initiating logout...');
+              await logout();
+              console.log('Settings: Logout completed');
+            } catch (error) {
+              console.error('Settings: Logout failed:', error);
+              setIsLoggingOut(false);
+              Alert.alert(
+                'Logout Failed',
+                'There was an error logging out. Please try again.',
+                [{ text: 'OK' }]
+              );
+            }
           },
         },
       ]
@@ -206,15 +219,22 @@ export default function HomeownerSettings() {
         <TouchableOpacity
           style={[styles.logoutButton]}
           onPress={handleLogout}
+          disabled={isLoggingOut}
         >
           <GlassView style={[styles.menuItem, { borderColor: colors.error + '30' }]}>
-            <IconSymbol
-              ios_icon_name="arrow.right.square.fill"
-              android_material_icon_name="logout"
-              size={20}
-              color={colors.error}
-            />
-            <Text style={[styles.menuText, { color: colors.error }]}>Logout</Text>
+            {isLoggingOut ? (
+              <ActivityIndicator size="small" color={colors.error} />
+            ) : (
+              <React.Fragment>
+                <IconSymbol
+                  ios_icon_name="arrow.right.square.fill"
+                  android_material_icon_name="logout"
+                  size={20}
+                  color={colors.error}
+                />
+                <Text style={[styles.menuText, { color: colors.error }]}>Logout</Text>
+              </React.Fragment>
+            )}
           </GlassView>
         </TouchableOpacity>
       </View>
