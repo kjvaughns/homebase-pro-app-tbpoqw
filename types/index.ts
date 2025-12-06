@@ -107,16 +107,23 @@ export interface Booking {
   service_name: string;
   scheduled_date: string;
   scheduled_time: string;
+  end_time?: string;
   duration?: number;
   address: string;
   notes?: string;
-  status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'blocked';
   price?: number;
   created_at: string;
   updated_at: string;
+  route_order?: number;
+  clients?: {
+    name: string;
+    email?: string;
+    phone?: string;
+  };
 }
 
-export type BookingStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+export type BookingStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'blocked';
 
 export interface Quote {
   id: string;
@@ -158,7 +165,7 @@ export interface Invoice {
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
 
 export interface LineItem {
-  id: string;
+  id?: string;
   description: string;
   quantity: number;
   unit_price: number;
@@ -179,6 +186,7 @@ export interface Payment {
   notes?: string;
   created_at: string;
   updated_at: string;
+  payment_link_url?: string;
 }
 
 export interface Notification {
@@ -215,6 +223,63 @@ export interface ClientFile {
   file_type?: string;
   file_size?: number;
   uploaded_by?: string;
+  created_at: string;
+}
+
+export interface ClientNote {
+  id: string;
+  client_id: string;
+  organization_id: string;
+  created_by: string;
+  note_type: 'general' | 'call' | 'meeting' | 'email' | 'sms' | 'system';
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientMessage {
+  id: string;
+  client_id: string;
+  organization_id: string;
+  sent_by: string;
+  message_type: 'sms' | 'email' | 'internal';
+  subject?: string;
+  content: string;
+  direction: 'inbound' | 'outbound';
+  status: 'draft' | 'sent' | 'delivered' | 'failed' | 'read';
+  external_id?: string;
+  created_at: string;
+  read_at?: string;
+}
+
+export interface Campaign {
+  id: string;
+  organization_id: string;
+  name: string;
+  subject?: string;
+  message: string;
+  channel: 'email' | 'sms' | 'both';
+  audience_filter: any;
+  status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
+  scheduled_at?: string;
+  sent_at?: string;
+  recipient_count: number;
+  opened_count: number;
+  clicked_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignSend {
+  id: string;
+  campaign_id: string;
+  client_id: string;
+  channel: string;
+  status: 'pending' | 'sent' | 'delivered' | 'failed' | 'opened' | 'clicked';
+  sent_at?: string;
+  opened_at?: string;
+  clicked_at?: string;
+  error_message?: string;
   created_at: string;
 }
 

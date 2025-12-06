@@ -53,6 +53,12 @@ export default function FloatingActionButton() {
       route: '/(provider)/money/payment-link' 
     },
     { 
+      label: 'Broadcast', 
+      iosIcon: 'megaphone.fill', 
+      androidIcon: 'campaign', 
+      route: '/(provider)/broadcast' 
+    },
+    { 
       label: 'Ask AI', 
       iosIcon: 'sparkles', 
       androidIcon: 'auto-awesome', 
@@ -107,26 +113,27 @@ export default function FloatingActionButton() {
           <BlurView intensity={50} tint="dark" style={styles.blurBackdrop}>
             <View style={styles.menuContainer}>
               {actions.map((action, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.actionButton}
-                  onPress={() => handleActionPress(action.route)}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.actionContent}>
-                    <View style={styles.actionLabelContainer}>
-                      <Text style={styles.actionLabel}>{action.label}</Text>
+                <React.Fragment key={index}>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => handleActionPress(action.route)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.actionContent}>
+                      <View style={styles.actionLabelContainer}>
+                        <Text style={styles.actionLabel}>{action.label}</Text>
+                      </View>
+                      <View style={styles.actionIconCircle}>
+                        <IconSymbol
+                          ios_icon_name={action.iosIcon}
+                          android_material_icon_name={action.androidIcon}
+                          size={20}
+                          color={colors.text}
+                        />
+                      </View>
                     </View>
-                    <View style={styles.actionIconCircle}>
-                      <IconSymbol
-                        ios_icon_name={action.iosIcon}
-                        android_material_icon_name={action.androidIcon}
-                        size={20}
-                        color={colors.text}
-                      />
-                    </View>
-                  </View>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </React.Fragment>
               ))}
             </View>
           </BlurView>
