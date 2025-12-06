@@ -470,9 +470,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     await loadUserData(session.user.id);
 
                     console.log('AuthContext: Navigating to onboarding...');
-                    // Small delay to ensure state is updated
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    // Navigate to onboarding
                     router.replace('/(provider)/onboarding/business-basics');
+                    
+                    // Small delay to give RoleGuard time to see the new value
+                    await new Promise(resolve => setTimeout(resolve, 150));
                   } catch (error: any) {
                     console.error('AuthContext: Error creating provider account:', error);
                     Alert.alert('Error', 'Failed to create provider account. Please try again.');
@@ -505,8 +507,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'provider');
                     await loadUserData(session.user.id);
                     
-                    await new Promise(resolve => setTimeout(resolve, 200));
                     router.replace('/(provider)/onboarding/business-basics');
+                    
+                    // Small delay to give RoleGuard time to see the new value
+                    await new Promise(resolve => setTimeout(resolve, 150));
                   } catch (error: any) {
                     console.error('AuthContext: Error switching to provider:', error);
                     Alert.alert('Error', 'Failed to switch profile. Please try again.');
@@ -558,8 +562,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'homeowner');
                     await loadUserData(session.user.id);
                     
-                    await new Promise(resolve => setTimeout(resolve, 200));
                     router.replace('/(homeowner)/(tabs)');
+                    
+                    // Small delay to give RoleGuard time to see the new value
+                    await new Promise(resolve => setTimeout(resolve, 150));
                   } catch (error: any) {
                     console.error('AuthContext: Error switching to homeowner:', error);
                     Alert.alert('Error', 'Failed to switch profile. Please try again.');
@@ -583,8 +589,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'homeowner');
                     await loadUserData(session.user.id);
 
-                    await new Promise(resolve => setTimeout(resolve, 200));
                     router.replace('/(homeowner)/onboarding/profile');
+                    
+                    // Small delay to give RoleGuard time to see the new value
+                    await new Promise(resolve => setTimeout(resolve, 150));
                   } catch (error: any) {
                     console.error('AuthContext: Error creating homeowner account:', error);
                     Alert.alert('Error', 'Failed to create homeowner account. Please try again.');
@@ -619,12 +627,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log('AuthContext: Navigating to dashboard...');
       // Navigate to appropriate dashboard
-      await new Promise(resolve => setTimeout(resolve, 200));
       if (targetRole === 'provider') {
         router.replace('/(provider)/(tabs)');
       } else {
         router.replace('/(homeowner)/(tabs)');
       }
+
+      // Small delay to give RoleGuard time to see the new value
+      await new Promise(resolve => setTimeout(resolve, 150));
 
       Alert.alert(
         'Profile Switched',

@@ -7,8 +7,6 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
-import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface AccountSwitcherDropdownProps {
   visible: boolean;
@@ -17,7 +15,7 @@ interface AccountSwitcherDropdownProps {
 }
 
 export function AccountSwitcherDropdown({ visible, onClose, anchorPosition }: AccountSwitcherDropdownProps) {
-  const { profile, session, refreshProfile } = useAuth();
+  const { profile, session, switchProfile } = useAuth();
   const [switching, setSwitching] = useState(false);
   const [hasHomeownerProfile, setHasHomeownerProfile] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -36,16 +34,17 @@ export function AccountSwitcherDropdown({ visible, onClose, anchorPosition }: Ac
     
     try {
       setLoading(true);
-      console.log('AccountSwitcher: Checking homeowner profile for user:', session.user.id);
+      console.log('AccountSwitcher: Checking for existing homes for user:', session.user.id);
       
+      // Check if user has any homes (this is what AuthContext checks)
       const { data, error } = await supabase
-        .from('homeowner_profiles')
+        .from('homes')
         .select('id')
-        .eq('user_id', session.user.id)
+        .eq('homeowner_id', profile?.id)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
-        console.error('AccountSwitcher: Error checking homeowner profile:', error);
+        console.error('AccountSwitcher: Error checking homes:', error);
       }
 
       const exists = !!data;
@@ -75,96 +74,17 @@ export function AccountSwitcherDropdown({ visible, onClose, anchorPosition }: Ac
       setSwitching(true);
       console.log('=== ACCOUNT SWITCHER: Starting switch to', targetRole, '===');
       console.log('Current role:', profile.role);
-      console.log('Session user ID:', session.user.id);
-      console.log('Profile ID:', profile.id);
-
-      // If switching to homeowner and no profile exists, create one
-      if (targetRole === 'homeowner' && !hasHomeownerProfile) {
-        console.log('AccountSwitcher: Creating homeowner account...');
-        
-        // Get the current session token
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        
-        if (!currentSession) {
-          throw new Error('No active session found');
-        }
-
-        console.log('AccountSwitcher: Session token available:', !!currentSession.access_token);
-        
-        // Call edge function to create homeowner account
-        const { data: createData, error: createError } = await supabase.functions.invoke('create-homeowner-account', {
-          headers: {
-            Authorization: `Bearer ${currentSession.access_token}`,
-          },
-        });
-
-        if (createError) {
-          console.error('AccountSwitcher: Error creating homeowner account:', createError);
-          Alert.alert('Error', `Failed to create homeowner account: ${createError.message}`);
-          throw createError;
-        }
-
-        console.log('AccountSwitcher: Homeowner account created:', createData);
-        setHasHomeownerProfile(true);
-      }
-
-      // Set the user role via edge function
-      console.log('AccountSwitcher: Setting user role to:', targetRole);
       
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      // Use the AuthContext switchProfile method
+      await switchProfile(targetRole);
       
-      if (!currentSession) {
-        throw new Error('No active session found');
-      }
-
-      const { data: roleData, error: roleError } = await supabase.functions.invoke('set-user-role', {
-        body: { role: targetRole },
-        headers: {
-          Authorization: `Bearer ${currentSession.access_token}`,
-        },
-      });
-
-      if (roleError) {
-        console.error('AccountSwitcher: Error setting user role:', roleError);
-        Alert.alert('Error', `Failed to set user role: ${roleError.message}`);
-        throw roleError;
-      }
-
-      console.log('AccountSwitcher: Role set successfully:', roleData);
-
-      // Persist role to AsyncStorage
-      await AsyncStorage.setItem('user_role', targetRole);
-      console.log('AccountSwitcher: Role persisted to AsyncStorage');
-
-      // Refresh profile data
-      await refreshProfile();
-      console.log('AccountSwitcher: Profile refreshed');
-
-      // Close dropdown
+      // Close the dropdown
       onClose();
-
-      // Small delay to ensure state is updated
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      // Navigate to appropriate dashboard
-      console.log('AccountSwitcher: Navigating to dashboard...');
-      if (targetRole === 'provider') {
-        router.replace('/(provider)/(tabs)');
-      } else {
-        router.replace('/(homeowner)/(tabs)');
-      }
-
-      // Show success message
-      Alert.alert('Success', `Switched to ${targetRole} account`);
-
+      
       console.log('=== ACCOUNT SWITCHER: Switch complete ===');
     } catch (error: any) {
-      console.error('AccountSwitcher: Error switching role:', error);
-      Alert.alert(
-        'Switch Failed',
-        error.message || 'Failed to switch account. Please try again.',
-        [{ text: 'OK' }]
-      );
+      console.error('AccountSwitcher: switchProfile failed', error);
+      Alert.alert('Switch Failed', error?.message || 'Please try again.');
     } finally {
       setSwitching(false);
     }
@@ -222,66 +142,46 @@ export function AccountSwitcherDropdown({ visible, onClose, anchorPosition }: Ac
               </TouchableOpacity>
 
               {/* Homeowner Option */}
-              {hasHomeownerProfile ? (
-                <TouchableOpacity
-                  onPress={() => handleSwitchRole('homeowner')}
-                  disabled={switching || loading}
-                  style={styles.optionButton}
-                >
-                  <GlassView style={[
-                    styles.option,
-                    currentRole === 'homeowner' && styles.optionActive
-                  ]}>
-                    <View style={styles.optionLeft}>
-                      <IconSymbol
-                        ios_icon_name="house.fill"
-                        android_material_icon_name="home"
-                        size={24}
-                        color={currentRole === 'homeowner' ? colors.primary : colors.text}
-                      />
-                      <View style={styles.optionInfo}>
-                        <Text style={styles.optionTitle}>Homeowner</Text>
-                        <Text style={styles.optionDescription}>Manage your home services</Text>
-                      </View>
-                    </View>
-                    {currentRole === 'homeowner' && (
-                      <IconSymbol
-                        ios_icon_name="checkmark.circle.fill"
-                        android_material_icon_name="check-circle"
-                        size={24}
-                        color={colors.primary}
-                      />
-                    )}
-                  </GlassView>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => handleSwitchRole('homeowner')}
-                  disabled={switching || loading}
-                  style={styles.optionButton}
-                >
-                  <GlassView style={styles.option}>
-                    <View style={styles.optionLeft}>
-                      <IconSymbol
-                        ios_icon_name="plus.circle.fill"
-                        android_material_icon_name="add-circle"
-                        size={24}
-                        color={colors.primary}
-                      />
-                      <View style={styles.optionInfo}>
-                        <Text style={styles.optionTitle}>Create Homeowner Account</Text>
-                        <Text style={styles.optionDescription}>Start managing your home</Text>
-                      </View>
-                    </View>
+              <TouchableOpacity
+                onPress={() => handleSwitchRole('homeowner')}
+                disabled={switching || loading}
+                style={styles.optionButton}
+              >
+                <GlassView style={[
+                  styles.option,
+                  currentRole === 'homeowner' && styles.optionActive
+                ]}>
+                  <View style={styles.optionLeft}>
                     <IconSymbol
-                      ios_icon_name="chevron.right"
-                      android_material_icon_name="chevron-right"
-                      size={20}
-                      color={colors.textSecondary}
+                      ios_icon_name="house.fill"
+                      android_material_icon_name="home"
+                      size={24}
+                      color={currentRole === 'homeowner' ? colors.primary : colors.text}
                     />
-                  </GlassView>
-                </TouchableOpacity>
-              )}
+                    <View style={styles.optionInfo}>
+                      <Text style={styles.optionTitle}>Homeowner</Text>
+                      <Text style={styles.optionDescription}>
+                        {hasHomeownerProfile ? 'Manage your home services' : 'Create homeowner account'}
+                      </Text>
+                    </View>
+                  </View>
+                  {currentRole === 'homeowner' ? (
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check-circle"
+                      size={24}
+                      color={colors.primary}
+                    />
+                  ) : !hasHomeownerProfile ? (
+                    <IconSymbol
+                      ios_icon_name="plus.circle.fill"
+                      android_material_icon_name="add-circle"
+                      size={24}
+                      color={colors.primary}
+                    />
+                  ) : null}
+                </GlassView>
+              </TouchableOpacity>
 
               {switching && (
                 <View style={styles.loadingContainer}>
