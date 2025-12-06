@@ -1,19 +1,27 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert, Image, Modal, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { BlurView } from 'expo-blur';
 
-export default function SettingsScreen() {
+export default function MoreScreen() {
   const router = useRouter();
   const { user, profile, organization, logout, switchProfile } = useAuth();
-  const [publishedToMarketplace, setPublishedToMarketplace] = useState(organization?.published_to_marketplace || false);
-  const [pushNotifications, setPushNotifications] = useState(true);
-  const [emailNotifications, setEmailNotifications] = useState(true);
   const [switching, setSwitching] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const fadeAnim = useState(new Animated.Value(0))[0];
+
+  React.useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   const handleLogout = () => {
     Alert.alert(
@@ -33,221 +41,305 @@ export default function SettingsScreen() {
     );
   };
 
-  const handleSwitchProfile = async () => {
-    if (switching) {
-      console.log('Already switching, ignoring...');
-      return;
-    }
+  const handleSwitchRole = async (targetRole: 'provider' | 'homeowner') => {
+    if (switching) return;
     
     try {
-      console.log('Switch profile button pressed');
       setSwitching(true);
-      await switchProfile('homeowner');
+      setShowRoleModal(false);
+      await switchProfile(targetRole);
     } catch (error) {
-      console.error('Switch profile error:', error);
+      console.error('Switch role error:', error);
     } finally {
       setSwitching(false);
     }
   };
 
+  const RoleModal = () => (
+    <Modal
+      visible={showRoleModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowRoleModal(false)}
+    >
+      <BlurView intensity={80} tint="dark" style={styles.modalOverlay}>
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setShowRoleModal(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <GlassView style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Switch Account</Text>
+              <Text style={styles.modalSubtitle}>Choose which account to use</Text>
+
+              <TouchableOpacity 
+                onPress={() => handleSwitchRole('provider')}
+                disabled={profile?.role === 'provider'}
+              >
+                <GlassView style={[styles.roleOption, profile?.role === 'provider' && styles.roleOptionActive]}>
+                  <View style={styles.roleOptionLeft}>
+                    <IconSymbol ios_icon_name="briefcase.fill" android_material_icon_name="business" size={24} color={colors.primary} />
+                    <View style={styles.roleOptionInfo}>
+                      <Text style={styles.roleOptionTitle}>Provider</Text>
+                      <Text style={styles.roleOptionDescription}>Manage your business</Text>
+                    </View>
+                  </View>
+                  {profile?.role === 'provider' && (
+                    <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={24} color={colors.primary} />
+                  )}
+                </GlassView>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                onPress={() => handleSwitchRole('homeowner')}
+                disabled={profile?.role === 'homeowner'}
+              >
+                <GlassView style={[styles.roleOption, profile?.role === 'homeowner' && styles.roleOptionActive]}>
+                  <View style={styles.roleOptionLeft}>
+                    <IconSymbol ios_icon_name="house.fill" android_material_icon_name="home" size={24} color={colors.accent} />
+                    <View style={styles.roleOptionInfo}>
+                      <Text style={styles.roleOptionTitle}>Homeowner</Text>
+                      <Text style={styles.roleOptionDescription}>Manage your home services</Text>
+                    </View>
+                  </View>
+                  {profile?.role === 'homeowner' && (
+                    <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={24} color={colors.primary} />
+                  )}
+                </GlassView>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => setShowRoleModal(false)} style={styles.modalCloseButton}>
+                <Text style={styles.modalCloseText}>Cancel</Text>
+              </TouchableOpacity>
+            </GlassView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </BlurView>
+    </Modal>
+  );
+
   return (
     <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
-      {/* Header with Logo */}
-      <View style={styles.header}>
+      <RoleModal />
+
+      {/* Header */}
+      <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
         <Image
           source={require('@/assets/images/4d3cae05-9ebb-4fdb-a402-bcee823fa1a2.png')}
           style={styles.logo}
           resizeMode="contain"
         />
         <Text style={styles.title}>More</Text>
-      </View>
+      </Animated.View>
 
-      {/* Profile Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Profile</Text>
-        <GlassView style={styles.profileCard}>
-          <View style={styles.profileHeader}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{user?.name?.[0] || 'P'}</Text>
-            </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>{user?.name}</Text>
-              <Text style={styles.profileEmail}>{user?.email}</Text>
-              <View style={styles.badge}>
-                <IconSymbol ios_icon_name="briefcase.fill" android_material_icon_name="business" size={12} color={colors.primary} />
-                <Text style={styles.badgeText}>PROVIDER</Text>
+      {/* Profile Card */}
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}>
+        <View style={styles.section}>
+          <GlassView style={styles.profileCard}>
+            <View style={styles.profileHeader}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{user?.name?.[0]?.toUpperCase() || 'P'}</Text>
+              </View>
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>{user?.name || 'Provider'}</Text>
+                <Text style={styles.profileEmail}>{user?.email}</Text>
+                <View style={styles.badge}>
+                  <IconSymbol 
+                    ios_icon_name={profile?.role === 'provider' ? 'briefcase.fill' : 'house.fill'} 
+                    android_material_icon_name={profile?.role === 'provider' ? 'business' : 'home'} 
+                    size={12} 
+                    color={colors.primary} 
+                  />
+                  <Text style={styles.badgeText}>{profile?.role?.toUpperCase() || 'PROVIDER'}</Text>
+                </View>
               </View>
             </View>
-          </View>
-        </GlassView>
+          </GlassView>
+        </View>
+      </Animated.View>
 
-        {/* Switch Profile */}
-        <TouchableOpacity onPress={handleSwitchProfile} disabled={switching}>
-          <GlassView style={[styles.settingItem, switching && styles.settingItemDisabled]}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="arrow.left.arrow.right" android_material_icon_name="swap-horiz" size={24} color={colors.accent} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>
-                  {switching ? 'Switching...' : 'Switch to Homeowner'}
-                </Text>
-                <Text style={styles.settingDescription}>View and manage your home services</Text>
+      {/* Account Switcher */}
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <TouchableOpacity onPress={() => setShowRoleModal(true)} disabled={switching}>
+            <GlassView style={[styles.settingItem, switching && styles.settingItemDisabled]}>
+              <View style={styles.settingLeft}>
+                <IconSymbol ios_icon_name="arrow.left.arrow.right" android_material_icon_name="swap-horiz" size={24} color={colors.primary} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>
+                    {switching ? 'Switching...' : 'Switch Account'}
+                  </Text>
+                  <Text style={styles.settingDescription}>Change between provider and homeowner</Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
-        <TouchableOpacity onPress={() => router.push('/(provider)/business-profile/index' as any)}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="account-circle" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Business Profile</Text>
-                <Text style={styles.settingDescription}>Edit marketplace profile and slug</Text>
+      {/* Business Profile */}
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Business</Text>
+          <TouchableOpacity onPress={() => router.push('/(provider)/business-profile/index' as any)}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol ios_icon_name="building.2.fill" android_material_icon_name="business" size={24} color={colors.primary} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Business Profile</Text>
+                  <Text style={styles.settingDescription}>Edit your marketplace presence</Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
-      {/* Money & Billing */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Money & Billing</Text>
-        <TouchableOpacity onPress={() => router.push('/(provider)/money-home/index' as any)}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="dollarsign.circle.fill" android_material_icon_name="attach-money" size={24} color={colors.success} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Money</Text>
-                <Text style={styles.settingDescription}>Revenue, invoices & payments</Text>
+      {/* Money */}
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Money</Text>
+          <TouchableOpacity onPress={() => router.push('/(provider)/money-home/index' as any)}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol ios_icon_name="dollarsign.circle.fill" android_material_icon_name="attach-money" size={24} color={colors.primary} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Money Hub</Text>
+                  <Text style={styles.settingDescription}>Revenue, payouts & analytics</Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.push('/(provider)/settings/payment' as any)}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="payment" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Payment Settings</Text>
-                <Text style={styles.settingDescription}>Stripe Connect & payouts</Text>
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+
+      {/* Billing */}
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Billing</Text>
+          <TouchableOpacity onPress={() => router.push('/(provider)/billing/index' as any)}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="receipt" size={24} color={colors.primary} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Subscription & Billing</Text>
+                  <Text style={styles.settingDescription}>Manage your plan and payment methods</Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.push('/(provider)/billing/index' as any)}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="receipt" size={24} color={colors.accent} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Billing</Text>
-                <Text style={styles.settingDescription}>Subscription & invoices</Text>
-              </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
       {/* Integrations */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Integrations</Text>
-        <TouchableOpacity onPress={() => router.push('/(provider)/integrations/index' as any)}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="app.connected.to.app.below.fill" android_material_icon_name="extension" size={24} color={colors.accent} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Integrations</Text>
-                <Text style={styles.settingDescription}>Calendar, QuickBooks, Zapier</Text>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [70, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Integrations</Text>
+          <TouchableOpacity onPress={() => router.push('/(provider)/integrations/index' as any)}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol ios_icon_name="app.connected.to.app.below.fill" android_material_icon_name="extension" size={24} color={colors.primary} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Integrations</Text>
+                  <Text style={styles.settingDescription}>Calendar, QuickBooks, Zapier</Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
-
-      {/* Marketplace */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Marketplace</Text>
-        <GlassView style={styles.settingItem}>
-          <View style={styles.settingLeft}>
-            <IconSymbol ios_icon_name="globe" android_material_icon_name="public" size={24} color={colors.primary} />
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Publish to Marketplace</Text>
-              <Text style={styles.settingDescription}>
-                {publishedToMarketplace ? 'Visible to homeowners' : 'Not visible'}
-              </Text>
-            </View>
-          </View>
-          <Switch
-            value={publishedToMarketplace}
-            onValueChange={setPublishedToMarketplace}
-            trackColor={{ false: colors.glass, true: colors.primary }}
-            thumbColor={colors.text}
-          />
-        </GlassView>
-      </View>
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
       {/* Notifications */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notifications</Text>
-        <GlassView style={styles.settingItem}>
-          <View style={styles.settingLeft}>
-            <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={24} color={colors.accent} />
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Push Notifications</Text>
-              <Text style={styles.settingDescription}>Receive push notifications</Text>
-            </View>
-          </View>
-          <Switch
-            value={pushNotifications}
-            onValueChange={setPushNotifications}
-            trackColor={{ false: colors.glass, true: colors.primary }}
-            thumbColor={colors.text}
-          />
-        </GlassView>
-        <GlassView style={styles.settingItem}>
-          <View style={styles.settingLeft}>
-            <IconSymbol ios_icon_name="envelope.fill" android_material_icon_name="email" size={24} color={colors.primary} />
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Email Notifications</Text>
-              <Text style={styles.settingDescription}>Receive email updates</Text>
-            </View>
-          </View>
-          <Switch
-            value={emailNotifications}
-            onValueChange={setEmailNotifications}
-            trackColor={{ false: colors.glass, true: colors.primary }}
-            thumbColor={colors.text}
-          />
-        </GlassView>
-      </View>
-
-      {/* Support */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Support</Text>
-        <TouchableOpacity onPress={() => router.push('/(provider)/support/index' as any)}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="questionmark.circle.fill" android_material_icon_name="help" size={24} color={colors.accent} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Help & Support</Text>
-                <Text style={styles.settingDescription}>Get help from our team</Text>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notifications</Text>
+          <TouchableOpacity onPress={() => router.push('/(provider)/notifications/index' as any)}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={24} color={colors.primary} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Notification Settings</Text>
+                  <Text style={styles.settingDescription}>Manage push and email notifications</Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+
+      {/* About and Legal */}
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [90, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>About & Legal</Text>
+          <TouchableOpacity onPress={() => router.push('/(provider)/support/index' as any)}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol ios_icon_name="questionmark.circle.fill" android_material_icon_name="help" size={24} color={colors.primary} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Help & Support</Text>
+                  <Text style={styles.settingDescription}>Get help from our team</Text>
+                </View>
+              </View>
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+            </GlassView>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => Alert.alert('About', 'HomeBase v1.0.0\n\nYour all-in-one home service management platform.')}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol ios_icon_name="info.circle.fill" android_material_icon_name="info" size={24} color={colors.primary} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>About HomeBase</Text>
+                  <Text style={styles.settingDescription}>Version and app information</Text>
+                </View>
+              </View>
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+            </GlassView>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => Alert.alert('Privacy Policy', 'View our privacy policy at homebase.app/privacy')}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol ios_icon_name="lock.fill" android_material_icon_name="lock" size={24} color={colors.primary} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Privacy Policy</Text>
+                  <Text style={styles.settingDescription}>How we protect your data</Text>
+                </View>
+              </View>
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+            </GlassView>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => Alert.alert('Terms of Service', 'View our terms at homebase.app/terms')}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="description" size={24} color={colors.primary} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Terms of Service</Text>
+                  <Text style={styles.settingDescription}>Legal terms and conditions</Text>
+                </View>
+              </View>
+              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
       {/* Logout */}
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <IconSymbol ios_icon_name="arrow.right.square.fill" android_material_icon_name="logout" size={20} color={colors.error} />
-        <Text style={styles.logoutText}>Logout</Text>
-      </TouchableOpacity>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) }] }}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <IconSymbol ios_icon_name="arrow.right.square.fill" android_material_icon_name="logout" size={20} color={colors.error} />
+          <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
+      </Animated.View>
     </ScrollView>
   );
 }
@@ -256,7 +348,7 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
   header: {
     alignItems: 'center',
@@ -273,18 +365,19 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
     paddingLeft: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   profileCard: {
     padding: 20,
-    marginBottom: 12,
   },
   profileHeader: {
     flexDirection: 'row',
@@ -292,15 +385,15 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '700',
     color: colors.text,
   },
@@ -308,7 +401,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   profileName: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
@@ -316,22 +409,23 @@ const styles = StyleSheet.create({
   profileEmail: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
     backgroundColor: colors.primary + '20',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 8,
-    gap: 4,
+    gap: 6,
   },
   badgeText: {
     fontSize: 11,
     fontWeight: '700',
     color: colors.primary,
+    letterSpacing: 0.5,
   },
   settingItem: {
     flexDirection: 'row',
@@ -347,7 +441,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    gap: 12,
+    gap: 14,
   },
   settingInfo: {
     flex: 1,
@@ -361,6 +455,7 @@ const styles = StyleSheet.create({
   settingDescription: {
     fontSize: 13,
     color: colors.textSecondary,
+    lineHeight: 18,
   },
   logoutButton: {
     flexDirection: 'row',
@@ -370,13 +465,77 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.error,
+    borderColor: colors.error + '40',
     gap: 8,
-    marginTop: 16,
+    marginTop: 8,
   },
   logoutText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.error,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  roleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    marginBottom: 12,
+  },
+  roleOptionActive: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  roleOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  roleOptionInfo: {
+    flex: 1,
+  },
+  roleOptionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  roleOptionDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  modalCloseButton: {
+    marginTop: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });
