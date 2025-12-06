@@ -5,6 +5,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { Session } from '@supabase/supabase-js';
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface AuthContextType {
   user: User | null;
@@ -22,6 +23,8 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const ROLE_STORAGE_KEY = 'user_role';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -94,6 +97,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (profileData) {
+        // Check for persisted role in AsyncStorage
+        const storedRole = await AsyncStorage.getItem(ROLE_STORAGE_KEY);
+        
+        // If stored role differs from profile role, update profile
+        if (storedRole && storedRole !== profileData.role && ['provider', 'homeowner'].includes(storedRole)) {
+          console.log('Syncing stored role with profile:', storedRole);
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ role: storedRole, updated_at: new Date().toISOString() })
+            .eq('id', profileData.id);
+          
+          if (!updateError) {
+            profileData.role = storedRole;
+          }
+        } else if (profileData.role) {
+          // Store current role
+          await AsyncStorage.setItem(ROLE_STORAGE_KEY, profileData.role);
+        }
+
         console.log('Profile loaded:', profileData.role);
         setProfile(profileData);
         setUser({
@@ -292,6 +314,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // If we have a session, wait for the trigger to create the profile
         await loadUserData(data.user.id);
 
+        // Store initial role
+        await AsyncStorage.setItem(ROLE_STORAGE_KEY, role);
+
         // Show success alert
         Alert.alert(
           'Account Created!',
@@ -332,6 +357,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('Logging out');
       await supabase.auth.signOut();
+      await AsyncStorage.removeItem(ROLE_STORAGE_KEY);
       setUser(null);
       setProfile(null);
       setOrganization(null);
@@ -415,6 +441,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                     console.log('Role updated successfully');
 
+                    // Store role
+                    await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'provider');
+
                     // Create organization
                     const { error: orgError } = await supabase
                       .from('organizations')
@@ -467,6 +496,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     
                     if (roleError) throw roleError;
 
+                    await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'provider');
                     await loadUserData(session.user.id);
                     
                     await new Promise(resolve => setTimeout(resolve, 200));
@@ -519,6 +549,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     
                     if (roleError) throw roleError;
 
+                    await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'homeowner');
                     await loadUserData(session.user.id);
                     
                     await new Promise(resolve => setTimeout(resolve, 200));
@@ -543,6 +574,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                     if (roleError) throw roleError;
 
+                    await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'homeowner');
                     await loadUserData(session.user.id);
 
                     await new Promise(resolve => setTimeout(resolve, 200));
@@ -572,6 +604,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('Role updated successfully');
+
+      // Store role
+      await AsyncStorage.setItem(ROLE_STORAGE_KEY, targetRole);
 
       // Refresh profile data
       await loadUserData(session.user.id);

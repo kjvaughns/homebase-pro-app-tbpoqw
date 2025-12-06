@@ -1,18 +1,17 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert, Image, Modal, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import { BlurView } from 'expo-blur';
+import { AccountSwitcherDropdown } from '@/components/AccountSwitcherDropdown';
 
 export default function MoreScreen() {
   const router = useRouter();
-  const { user, profile, organization, logout, switchProfile } = useAuth();
-  const [switching, setSwitching] = useState(false);
-  const [showRoleModal, setShowRoleModal] = useState(false);
+  const { user, profile, organization, logout } = useAuth();
+  const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
   const fadeAnim = useState(new Animated.Value(0))[0];
 
   React.useEffect(() => {
@@ -41,87 +40,12 @@ export default function MoreScreen() {
     );
   };
 
-  const handleSwitchRole = async (targetRole: 'provider' | 'homeowner') => {
-    if (switching) return;
-    
-    try {
-      setSwitching(true);
-      setShowRoleModal(false);
-      await switchProfile(targetRole);
-    } catch (error) {
-      console.error('Switch role error:', error);
-    } finally {
-      setSwitching(false);
-    }
-  };
-
-  const RoleModal = () => (
-    <Modal
-      visible={showRoleModal}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setShowRoleModal(false)}
-    >
-      <BlurView intensity={80} tint="dark" style={styles.modalOverlay}>
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1} 
-          onPress={() => setShowRoleModal(false)}
-        >
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <GlassView style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Switch Account</Text>
-              <Text style={styles.modalSubtitle}>Choose which account to use</Text>
-
-              <TouchableOpacity 
-                onPress={() => handleSwitchRole('provider')}
-                disabled={profile?.role === 'provider'}
-              >
-                <GlassView style={[styles.roleOption, profile?.role === 'provider' && styles.roleOptionActive]}>
-                  <View style={styles.roleOptionLeft}>
-                    <IconSymbol ios_icon_name="briefcase.fill" android_material_icon_name="business" size={24} color={colors.primary} />
-                    <View style={styles.roleOptionInfo}>
-                      <Text style={styles.roleOptionTitle}>Provider</Text>
-                      <Text style={styles.roleOptionDescription}>Manage your business</Text>
-                    </View>
-                  </View>
-                  {profile?.role === 'provider' && (
-                    <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={24} color={colors.primary} />
-                  )}
-                </GlassView>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                onPress={() => handleSwitchRole('homeowner')}
-                disabled={profile?.role === 'homeowner'}
-              >
-                <GlassView style={[styles.roleOption, profile?.role === 'homeowner' && styles.roleOptionActive]}>
-                  <View style={styles.roleOptionLeft}>
-                    <IconSymbol ios_icon_name="house.fill" android_material_icon_name="home" size={24} color={colors.accent} />
-                    <View style={styles.roleOptionInfo}>
-                      <Text style={styles.roleOptionTitle}>Homeowner</Text>
-                      <Text style={styles.roleOptionDescription}>Manage your home services</Text>
-                    </View>
-                  </View>
-                  {profile?.role === 'homeowner' && (
-                    <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={24} color={colors.primary} />
-                  )}
-                </GlassView>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => setShowRoleModal(false)} style={styles.modalCloseButton}>
-                <Text style={styles.modalCloseText}>Cancel</Text>
-              </TouchableOpacity>
-            </GlassView>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </BlurView>
-    </Modal>
-  );
-
   return (
     <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
-      <RoleModal />
+      <AccountSwitcherDropdown
+        visible={showAccountSwitcher}
+        onClose={() => setShowAccountSwitcher(false)}
+      />
 
       {/* Header */}
       <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
@@ -163,14 +87,12 @@ export default function MoreScreen() {
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
-          <TouchableOpacity onPress={() => setShowRoleModal(true)} disabled={switching}>
-            <GlassView style={[styles.settingItem, switching && styles.settingItemDisabled]}>
+          <TouchableOpacity onPress={() => setShowAccountSwitcher(true)}>
+            <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
                 <IconSymbol ios_icon_name="arrow.left.arrow.right" android_material_icon_name="swap-horiz" size={24} color={colors.primary} />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>
-                    {switching ? 'Switching...' : 'Switch Account'}
-                  </Text>
+                  <Text style={styles.settingLabel}>Switch Account</Text>
                   <Text style={styles.settingDescription}>Change between provider and homeowner</Text>
                 </View>
               </View>
@@ -434,9 +356,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
   },
-  settingItemDisabled: {
-    opacity: 0.5,
-  },
   settingLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -473,69 +392,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.error,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    width: '100%',
-    maxWidth: 400,
-    padding: 24,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  roleOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    marginBottom: 12,
-  },
-  roleOptionActive: {
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  roleOptionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
-  roleOptionInfo: {
-    flex: 1,
-  },
-  roleOptionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  roleOptionDescription: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  modalCloseButton: {
-    marginTop: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  modalCloseText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textSecondary,
   },
 });

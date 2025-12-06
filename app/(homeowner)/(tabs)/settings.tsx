@@ -6,10 +6,11 @@ import { colors, commonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassView } from '@/components/GlassView';
+import { AccountSwitcherDropdown } from '@/components/AccountSwitcherDropdown';
 
 export default function HomeownerSettings() {
-  const { user, profile, logout, switchProfile } = useAuth();
-  const [switching, setSwitching] = useState(false);
+  const { user, profile, logout } = useAuth();
+  const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
 
   const handleLogout = () => {
     Alert.alert(
@@ -29,25 +30,13 @@ export default function HomeownerSettings() {
     );
   };
 
-  const handleSwitchProfile = async () => {
-    if (switching) {
-      console.log('Already switching, ignoring...');
-      return;
-    }
-    
-    try {
-      console.log('Switch profile button pressed');
-      setSwitching(true);
-      await switchProfile('provider');
-    } catch (error) {
-      console.error('Switch profile error:', error);
-    } finally {
-      setSwitching(false);
-    }
-  };
-
   return (
     <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
+      <AccountSwitcherDropdown
+        visible={showAccountSwitcher}
+        onClose={() => setShowAccountSwitcher(false)}
+      />
+
       {/* Header with Logo */}
       <View style={styles.header}>
         <Image
@@ -68,7 +57,7 @@ export default function HomeownerSettings() {
               <Text style={styles.profileName}>{user?.name}</Text>
               <Text style={styles.profileEmail}>{user?.email}</Text>
               <View style={styles.badge}>
-                <IconSymbol ios_icon_name="house.fill" android_material_icon_name="home" size={12} color={colors.accent} />
+                <IconSymbol ios_icon_name="house.fill" android_material_icon_name="home" size={12} color={colors.primary} />
                 <Text style={styles.badgeText}>HOMEOWNER</Text>
               </View>
             </View>
@@ -79,20 +68,18 @@ export default function HomeownerSettings() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
 
-        {/* Switch Profile */}
-        <TouchableOpacity onPress={handleSwitchProfile} disabled={switching}>
-          <GlassView style={[styles.menuItem, switching && styles.menuItemDisabled]}>
+        {/* Switch Account */}
+        <TouchableOpacity onPress={() => setShowAccountSwitcher(true)}>
+          <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="arrow.left.arrow.right"
               android_material_icon_name="swap-horiz"
               size={20}
-              color={colors.accent}
+              color={colors.primary}
             />
             <View style={styles.menuTextContainer}>
-              <Text style={styles.menuText}>
-                {switching ? 'Switching...' : 'Switch to Provider'}
-              </Text>
-              <Text style={styles.menuSubtext}>Manage your business and clients</Text>
+              <Text style={styles.menuText}>Switch Account</Text>
+              <Text style={styles.menuSubtext}>Change between provider and homeowner</Text>
             </View>
             <IconSymbol
               ios_icon_name="chevron.right"
@@ -278,7 +265,7 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -305,7 +292,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: colors.accent + '30',
+    backgroundColor: colors.primary + '30',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 8,
@@ -314,16 +301,13 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.primary,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
     gap: 12,
-  },
-  menuItemDisabled: {
-    opacity: 0.5,
   },
   menuTextContainer: {
     flex: 1,
