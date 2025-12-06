@@ -1,620 +1,827 @@
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch, Alert, ActivityIndicator, Modal } from 'react-native';
-import { router } from 'expo-router';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Switch,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { supabase } from '@/app/integrations/supabase/client';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/app/integrations/supabase/client';
-import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
+import { useToast } from '@/contexts/ToastContext';
 
-export default function BusinessProfileScreen() {
-  const { organization } = useAuth();
+interface BusinessProfile {
+  id?: string;
+  organization_id?: string;
+  name?: string;
+  description?: string;
+  slug?: string;
+  logo_url?: string;
+  hero_url?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  socials?: {
+    instagram?: string;
+    facebook?: string;
+    tiktok?: string;
+    x?: string;
+    youtube?: string;
+  };
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  };
+  service_radius_miles?: number;
+  hours?: {
+    monday?: { open: string; close: string; closed?: boolean };
+    tuesday?: { open: string; close: string; closed?: boolean };
+    wednesday?: { open: string; close: string; closed?: boolean };
+    thursday?: { open: string; close: string; closed?: boolean };
+    friday?: { open: string; close: string; closed?: boolean };
+    saturday?: { open: string; close: string; closed?: boolean };
+    sunday?: { open: string; close: string; closed?: boolean };
+  };
+  photos?: Array<{ url: string; title?: string; category?: string }>;
+  services_visible?: boolean;
+  is_published?: boolean;
+}
+
+export default function BusinessProfileEditor() {
+  const router = useRouter();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [profile, setProfile] = useState<any>(null);
-  
-  // Form fields
-  const [businessName, setBusinessName] = useState('');
-  const [description, setDescription] = useState('');
-  const [logoUrl, setLogoUrl] = useState('');
-  const [heroUrl, setHeroUrl] = useState('');
-  const [businessPhone, setBusinessPhone] = useState('');
-  const [businessEmail, setBusinessEmail] = useState('');
-  const [radius, setRadius] = useState('25');
-  const [address, setAddress] = useState('');
-  const [servicesVisible, setServicesVisible] = useState(true);
-  const [facebookUrl, setFacebookUrl] = useState('');
-  const [instagramUrl, setInstagramUrl] = useState('');
-  const [websiteUrl, setWebsiteUrl] = useState('');
-  
-  // Marketplace
-  const [slug, setSlug] = useState('');
-  const [isPublished, setIsPublished] = useState(false);
-  const [checkingSlug, setCheckingSlug] = useState(false);
+  const [profile, setProfile] = useState<BusinessProfile>({
+    services_visible: true,
+    is_published: false,
+    service_radius_miles: 25,
+    socials: {},
+    address: {},
+    hours: {},
+    photos: [],
+  });
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null);
-  const [showSlugModal, setShowSlugModal] = useState(false);
+  const [checkingSlug, setCheckingSlug] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedRef = useRef<string>('');
 
   useEffect(() => {
     loadProfile();
-  }, [organization]);
+    
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
-    if (slug && slug.length >= 3) {
-      const timer = setTimeout(() => {
-        checkSlugAvailability();
-      }, 500);
-      return () => clearTimeout(timer);
+    const currentState = JSON.stringify(profile);
+    if (currentState !== lastSavedRef.current && lastSavedRef.current !== '') {
+      setHasUnsavedChanges(true);
+      
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      
+      autosaveTimerRef.current = setTimeout(() => {
+        handleSave(true);
+      }, 2000);
     }
-  }, [slug]);
+  }, [profile]);
 
   const loadProfile = async () => {
-    if (!organization) return;
-
     try {
-      setLoading(true);
-      
-      // Load organization data
-      const { data: orgData } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace('/auth/login');
+        return;
+      }
+
+      const { data: org, error: orgError } = await supabase
         .from('organizations')
-        .select('*')
-        .eq('id', organization.id)
+        .select('id')
+        .eq('owner_id', user.id)
         .single();
 
-      if (orgData) {
-        setBusinessName(orgData.business_name || '');
-        setDescription(orgData.description || '');
-        setLogoUrl(orgData.logo_url || '');
-        setRadius(orgData.service_radius?.toString() || '25');
-        setAddress(orgData.location || '');
+      if (orgError || !org) {
+        showToast('Organization not found', 'error');
+        return;
       }
 
-      // Load marketplace profile
-      const { data: marketplaceData } = await supabase
+      setOrganizationId(org.id);
+
+      const { data: existingProfile, error: profileError } = await supabase
         .from('org_marketplace_profiles')
         .select('*')
-        .eq('organization_id', organization.id)
+        .eq('organization_id', org.id)
         .maybeSingle();
 
-      if (marketplaceData) {
-        setProfile(marketplaceData);
-        setSlug(marketplaceData.slug || '');
-        setIsPublished(marketplaceData.is_published || false);
-        setHeroUrl(marketplaceData.hero_url || '');
-        setServicesVisible(marketplaceData.services_visible !== false);
-        
-        const socials = marketplaceData.socials || {};
-        setFacebookUrl(socials.facebook || '');
-        setInstagramUrl(socials.instagram || '');
-        setWebsiteUrl(socials.website || '');
-        
-        const contactPrefs = marketplaceData.contact_prefs || {};
-        setBusinessPhone(contactPrefs.phone || '');
-        setBusinessEmail(contactPrefs.email || '');
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Error loading profile:', profileError);
+        showToast('Error loading profile', 'error');
+        return;
+      }
+
+      if (existingProfile) {
+        setProfile(existingProfile);
+        lastSavedRef.current = JSON.stringify(existingProfile);
       } else {
-        // Initialize with organization slug
-        setSlug(organization.slug || organization.business_name.toLowerCase().replace(/\s+/g, '-'));
+        const newProfile = {
+          organization_id: org.id,
+          services_visible: true,
+          is_published: false,
+          service_radius_miles: 25,
+          socials: {},
+          address: {},
+          hours: {},
+          photos: [],
+        };
+        
+        const { data: created, error: createError } = await supabase
+          .from('org_marketplace_profiles')
+          .insert(newProfile)
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating profile:', createError);
+        } else if (created) {
+          setProfile(created);
+          lastSavedRef.current = JSON.stringify(created);
+        }
       }
     } catch (error) {
-      console.error('Error loading profile:', error);
-      Alert.alert('Error', 'Failed to load business profile');
+      console.error('Error:', error);
+      showToast('Error loading profile', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const checkSlugAvailability = async () => {
-    if (!slug || slug.length < 3) {
-      setSlugAvailable(null);
-      return;
-    }
-
+  const handleSave = async (isAutosave = false) => {
+    if (!organizationId) return;
+    
+    setSaving(true);
     try {
-      setCheckingSlug(true);
-      const { data, error } = await supabase
-        .from('org_marketplace_profiles')
-        .select('id, organization_id')
-        .eq('slug', slug.toLowerCase())
-        .maybeSingle();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        showToast('Please log in again', 'error');
+        return;
+      }
 
-      if (error) throw error;
+      const response = await fetch(
+        `${supabase.supabaseUrl}/functions/v1/save-profile`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify(profile),
+        }
+      );
 
-      // Slug is available if no record found, or if it's the current organization's slug
-      setSlugAvailable(!data || data.organization_id === organization?.id);
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to save profile');
+      }
+
+      lastSavedRef.current = JSON.stringify(profile);
+      setHasUnsavedChanges(false);
+      
+      if (!isAutosave) {
+        showToast('Profile saved successfully', 'success');
+      }
     } catch (error) {
-      console.error('Error checking slug:', error);
-      setSlugAvailable(null);
-    } finally {
-      setCheckingSlug(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!organization) return;
-
-    if (!slug || slug.trim().length < 3) {
-      Alert.alert('Invalid Slug', 'Slug must be at least 3 characters');
-      return;
-    }
-
-    if (slugAvailable === false) {
-      Alert.alert('Slug Unavailable', 'This slug is already taken. Please choose another.');
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      // Update organization
-      const { error: orgError } = await supabase
-        .from('organizations')
-        .update({
-          business_name: businessName,
-          description: description,
-          logo_url: logoUrl,
-          service_radius: parseInt(radius) || 25,
-          location: address,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', organization.id);
-
-      if (orgError) throw orgError;
-
-      // Upsert marketplace profile
-      const { error: marketplaceError } = await supabase
-        .from('org_marketplace_profiles')
-        .upsert({
-          organization_id: organization.id,
-          slug: slug.toLowerCase().replace(/\s+/g, '-'),
-          is_published: isPublished,
-          hero_url: heroUrl,
-          services_visible: servicesVisible,
-          socials: {
-            facebook: facebookUrl,
-            instagram: instagramUrl,
-            website: websiteUrl,
-          },
-          contact_prefs: {
-            phone: businessPhone,
-            email: businessEmail,
-          },
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'organization_id',
-        });
-
-      if (marketplaceError) throw marketplaceError;
-
-      Alert.alert('Success', 'Business profile updated successfully');
-      await loadProfile();
-    } catch (error: any) {
       console.error('Error saving profile:', error);
-      Alert.alert('Error', error.message || 'Failed to save business profile');
+      if (!isAutosave) {
+        showToast('Error saving profile', 'error');
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  const handleViewPublicPage = () => {
+  const checkSlugAvailability = async (slug: string) => {
     if (!slug) {
-      Alert.alert('No Slug', 'Please set a slug first');
+      setSlugAvailable(null);
       return;
     }
-    Alert.alert('Public Page', `Your public page will be at:\nhomebase.app/p/${slug}`);
+
+    setCheckingSlug(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(
+        `${supabase.supabaseUrl}/functions/v1/check-slug`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ slug }),
+        }
+      );
+
+      const result = await response.json();
+      setSlugAvailable(result.available);
+    } catch (error) {
+      console.error('Error checking slug:', error);
+    } finally {
+      setCheckingSlug(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    const validationErrors: Record<string, string> = {};
+    
+    if (!profile.name) validationErrors.name = 'Business name is required';
+    if (!profile.description) validationErrors.description = 'Description is required';
+    if (!profile.logo_url) validationErrors.logo_url = 'Logo is required';
+    if (!profile.hero_url) validationErrors.hero_url = 'Hero image is required';
+    if (!profile.slug) validationErrors.slug = 'Slug is required';
+    if (!profile.phone && !profile.email) validationErrors.contact = 'At least one contact method is required';
+    if (!profile.address?.street || !profile.address?.city) validationErrors.address = 'Complete address is required';
+
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      showToast('Please fill in all required fields', 'error');
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      await handleSave();
+
+      const response = await fetch(
+        `${supabase.supabaseUrl}/functions/v1/reserve-slug`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ org_id: organizationId, slug: profile.slug }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to reserve slug');
+      }
+
+      const publishResponse = await fetch(
+        `${supabase.supabaseUrl}/functions/v1/publish-profile`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ org_id: organizationId }),
+        }
+      );
+
+      if (!publishResponse.ok) {
+        const error = await publishResponse.json();
+        throw new Error(error.error || 'Failed to publish profile');
+      }
+
+      setProfile({ ...profile, is_published: true });
+      showToast('Profile published successfully!', 'success');
+    } catch (error: any) {
+      console.error('Error publishing:', error);
+      showToast(error.message || 'Error publishing profile', 'error');
+    }
+  };
+
+  const handleUnpublish = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(
+        `${supabase.supabaseUrl}/functions/v1/unpublish-profile`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ org_id: organizationId }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to unpublish profile');
+      }
+
+      setProfile({ ...profile, is_published: false });
+      showToast('Profile unpublished', 'success');
+    } catch (error) {
+      console.error('Error unpublishing:', error);
+      showToast('Error unpublishing profile', 'error');
+    }
   };
 
   const pickImage = async (type: 'logo' | 'hero') => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      aspect: type === 'logo' ? [1, 1] : [2, 1],
+      aspect: type === 'logo' ? [1, 1] : [16, 9],
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      // In a real app, you would upload to Supabase Storage here
-      const imageUrl = result.assets[0].uri;
-      if (type === 'logo') {
-        setLogoUrl(imageUrl);
-      } else {
-        setHeroUrl(imageUrl);
-      }
-      Alert.alert('Image Selected', 'In production, this would upload to Supabase Storage');
+      const asset = result.assets[0];
+      await uploadImage(asset.uri, type);
+    }
+  };
+
+  const uploadImage = async (uri: string, type: 'logo' | 'hero') => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const fileExt = uri.split('.').pop() || 'jpg';
+      const fileName = `${organizationId}-${type}-${Date.now()}.${fileExt}`;
+      const bucket = type === 'logo' ? 'marketplace-logos' : 'marketplace-hero';
+
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .upload(fileName, blob, {
+          contentType: `image/${fileExt}`,
+          upsert: true,
+        });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(fileName);
+
+      setProfile({
+        ...profile,
+        [type === 'logo' ? 'logo_url' : 'hero_url']: publicUrl,
+      });
+
+      showToast(`${type === 'logo' ? 'Logo' : 'Hero image'} uploaded`, 'success');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      showToast('Error uploading image', 'error');
+    }
+  };
+
+  const copyShareLink = async () => {
+    if (!profile.slug) {
+      showToast('Please set a slug first', 'error');
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(
+        `${supabase.supabaseUrl}/functions/v1/generate-share-link`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ slug: profile.slug }),
+        }
+      );
+
+      const result = await response.json();
+      
+      // In a real app, you'd use Clipboard API
+      showToast('Link copied: ' + result.link, 'success');
+    } catch (error) {
+      console.error('Error generating link:', error);
+      showToast('Error generating link', 'error');
     }
   };
 
   if (loading) {
     return (
-      <View style={[commonStyles.container, styles.centerContent]}>
+      <View style={[commonStyles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading profile...</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
-      {/* Slug Modal */}
-      <Modal
-        visible={showSlugModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowSlugModal(false)}
+    <View style={commonStyles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, commonStyles.safeAreaBottom]}
+        showsVerticalScrollIndicator={false}
       >
-        <BlurView intensity={80} tint="dark" style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={styles.modalOverlay} 
-            activeOpacity={1} 
-            onPress={() => setShowSlugModal(false)}
-          >
-            <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-              <GlassView style={styles.modalContent}>
-                <Text style={styles.modalTitle}>Edit Slug</Text>
-                <Text style={styles.modalSubtitle}>Choose your unique business URL</Text>
-
-                <View style={styles.field}>
-                  <Text style={styles.label}>Slug</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={slug}
-                    onChangeText={setSlug}
-                    placeholder="your-business-name"
-                    placeholderTextColor={colors.textSecondary}
-                    autoCapitalize="none"
-                  />
-                  <View style={styles.slugPreview}>
-                    <Text style={styles.slugPreviewText}>homebase.app/p/</Text>
-                    <Text style={[styles.slugPreviewText, { color: colors.primary }]}>{slug || 'your-slug'}</Text>
-                  </View>
-                  {checkingSlug && (
-                    <View style={styles.slugStatus}>
-                      <ActivityIndicator size="small" color={colors.primary} />
-                      <Text style={styles.slugStatusText}>Checking availability...</Text>
-                    </View>
-                  )}
-                  {!checkingSlug && slugAvailable === true && slug.length >= 3 && (
-                    <View style={styles.slugStatus}>
-                      <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={16} color={colors.success} />
-                      <Text style={[styles.slugStatusText, { color: colors.success }]}>Available!</Text>
-                    </View>
-                  )}
-                  {!checkingSlug && slugAvailable === false && (
-                    <View style={styles.slugStatus}>
-                      <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="cancel" size={16} color={colors.error} />
-                      <Text style={[styles.slugStatusText, { color: colors.error }]}>Already taken</Text>
-                    </View>
-                  )}
-                </View>
-
-                <TouchableOpacity 
-                  onPress={() => setShowSlugModal(false)} 
-                  style={styles.modalButton}
-                  disabled={slugAvailable === false}
-                >
-                  <GlassView style={styles.modalButtonInner}>
-                    <Text style={styles.modalButtonText}>Done</Text>
-                  </GlassView>
-                </TouchableOpacity>
-              </GlassView>
-            </TouchableOpacity>
+        {/* Header */}
+        <View style={[styles.header, commonStyles.safeAreaTop]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow_back"
+              size={24}
+              color={colors.text}
+            />
           </TouchableOpacity>
-        </BlurView>
-      </Modal>
-
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron-left" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Business Profile</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
-      {/* Basic Info */}
-      <GlassView style={styles.section}>
-        <Text style={styles.sectionTitle}>Basic Information</Text>
-        
-        <View style={styles.field}>
-          <Text style={styles.label}>Business Name *</Text>
-          <TextInput
-            style={styles.input}
-            value={businessName}
-            onChangeText={setBusinessName}
-            placeholder="Your Business Name"
-            placeholderTextColor={colors.textSecondary}
-          />
+          <Text style={styles.headerTitle}>Business Profile</Text>
+          <View style={styles.headerActions}>
+            {saving && <ActivityIndicator size="small" color={colors.primary} />}
+            <TouchableOpacity onPress={() => handleSave(false)} disabled={saving}>
+              <IconSymbol
+                ios_icon_name="checkmark"
+                android_material_icon_name="check"
+                size={24}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Description</Text>
+        {hasUnsavedChanges && (
+          <View style={styles.unsavedBanner}>
+            <Text style={styles.unsavedText}>Autosaving changes...</Text>
+          </View>
+        )}
+
+        {/* Basics Section */}
+        <GlassView style={styles.section}>
+          <Text style={styles.sectionTitle}>Basics</Text>
+          
+          <Text style={styles.label}>Business Name *</Text>
           <TextInput
-            style={[styles.input, styles.textArea]}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Tell homeowners about your business..."
+            style={[styles.input, errors.name && styles.inputError]}
+            value={profile.name || ''}
+            onChangeText={(text) => setProfile({ ...profile, name: text })}
+            placeholder="Enter business name"
+            placeholderTextColor={colors.textSecondary}
+          />
+          {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+
+          <Text style={styles.label}>Description *</Text>
+          <TextInput
+            style={[styles.textArea, errors.description && styles.inputError]}
+            value={profile.description || ''}
+            onChangeText={(text) => setProfile({ ...profile, description: text })}
+            placeholder="Describe your business..."
             placeholderTextColor={colors.textSecondary}
             multiline
             numberOfLines={4}
           />
-        </View>
-      </GlassView>
+          {errors.description && <Text style={styles.errorText}>{errors.description}</Text>}
 
-      {/* Media */}
-      <GlassView style={styles.section}>
-        <Text style={styles.sectionTitle}>Media</Text>
-        
-        <View style={styles.field}>
-          <Text style={styles.label}>Logo</Text>
-          <TouchableOpacity onPress={() => pickImage('logo')}>
-            <View style={styles.imageUpload}>
-              {logoUrl ? (
-                <Text style={styles.imageUploadText}>Logo selected ✓</Text>
-              ) : (
-                <>
-                  <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={32} color={colors.textSecondary} />
-                  <Text style={styles.imageUploadText}>Tap to upload logo</Text>
-                </>
-              )}
-            </View>
+          <View style={styles.switchRow}>
+            <Text style={styles.label}>Show Services on Public Page</Text>
+            <Switch
+              value={profile.services_visible}
+              onValueChange={(value) => setProfile({ ...profile, services_visible: value })}
+              trackColor={{ false: colors.glass, true: colors.primary }}
+              thumbColor={colors.text}
+            />
+          </View>
+        </GlassView>
+
+        {/* Branding Section */}
+        <GlassView style={styles.section}>
+          <Text style={styles.sectionTitle}>Branding</Text>
+          
+          <TouchableOpacity style={styles.uploadButton} onPress={() => pickImage('logo')}>
+            <IconSymbol
+              ios_icon_name="photo"
+              android_material_icon_name="image"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={styles.uploadButtonText}>
+              {profile.logo_url ? 'Change Logo' : 'Upload Logo *'}
+            </Text>
           </TouchableOpacity>
-        </View>
+          {errors.logo_url && <Text style={styles.errorText}>{errors.logo_url}</Text>}
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Hero Image</Text>
-          <TouchableOpacity onPress={() => pickImage('hero')}>
-            <View style={styles.imageUpload}>
-              {heroUrl ? (
-                <Text style={styles.imageUploadText}>Hero image selected ✓</Text>
-              ) : (
-                <>
-                  <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={32} color={colors.textSecondary} />
-                  <Text style={styles.imageUploadText}>Tap to upload hero (1200x600px)</Text>
-                </>
-              )}
-            </View>
+          <TouchableOpacity style={styles.uploadButton} onPress={() => pickImage('hero')}>
+            <IconSymbol
+              ios_icon_name="photo"
+              android_material_icon_name="image"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={styles.uploadButtonText}>
+              {profile.hero_url ? 'Change Hero Image' : 'Upload Hero Image *'}
+            </Text>
           </TouchableOpacity>
-        </View>
-      </GlassView>
+          {errors.hero_url && <Text style={styles.errorText}>{errors.hero_url}</Text>}
+        </GlassView>
 
-      {/* Contact */}
-      <GlassView style={styles.section}>
-        <Text style={styles.sectionTitle}>Contact Information</Text>
-        
-        <View style={styles.field}>
-          <Text style={styles.label}>Business Phone</Text>
+        {/* Contact Section */}
+        <GlassView style={styles.section}>
+          <Text style={styles.sectionTitle}>Contact</Text>
+          
+          <Text style={styles.label}>Phone</Text>
           <TextInput
             style={styles.input}
-            value={businessPhone}
-            onChangeText={setBusinessPhone}
+            value={profile.phone || ''}
+            onChangeText={(text) => setProfile({ ...profile, phone: text })}
             placeholder="(555) 123-4567"
             placeholderTextColor={colors.textSecondary}
             keyboardType="phone-pad"
           />
-        </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Business Email</Text>
+          <Text style={styles.label}>Email</Text>
           <TextInput
             style={styles.input}
-            value={businessEmail}
-            onChangeText={setBusinessEmail}
-            placeholder="contact@yourbusiness.com"
+            value={profile.email || ''}
+            onChangeText={(text) => setProfile({ ...profile, email: text })}
+            placeholder="contact@business.com"
             placeholderTextColor={colors.textSecondary}
             keyboardType="email-address"
             autoCapitalize="none"
           />
-        </View>
-      </GlassView>
+          {errors.contact && <Text style={styles.errorText}>{errors.contact}</Text>}
 
-      {/* Location */}
-      <GlassView style={styles.section}>
-        <Text style={styles.sectionTitle}>Service Area</Text>
-        
-        <View style={styles.field}>
+          <Text style={styles.label}>Website</Text>
+          <TextInput
+            style={styles.input}
+            value={profile.website || ''}
+            onChangeText={(text) => setProfile({ ...profile, website: text })}
+            placeholder="https://business.com"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="url"
+            autoCapitalize="none"
+          />
+
+          <Text style={styles.label}>Instagram</Text>
+          <TextInput
+            style={styles.input}
+            value={profile.socials?.instagram || ''}
+            onChangeText={(text) => setProfile({ 
+              ...profile, 
+              socials: { ...profile.socials, instagram: text } 
+            })}
+            placeholder="@username"
+            placeholderTextColor={colors.textSecondary}
+            autoCapitalize="none"
+          />
+
+          <Text style={styles.label}>Facebook</Text>
+          <TextInput
+            style={styles.input}
+            value={profile.socials?.facebook || ''}
+            onChangeText={(text) => setProfile({ 
+              ...profile, 
+              socials: { ...profile.socials, facebook: text } 
+            })}
+            placeholder="facebook.com/page"
+            placeholderTextColor={colors.textSecondary}
+            autoCapitalize="none"
+          />
+        </GlassView>
+
+        {/* Location Section */}
+        <GlassView style={styles.section}>
+          <Text style={styles.sectionTitle}>Location</Text>
+          
+          <Text style={styles.label}>Street Address *</Text>
+          <TextInput
+            style={[styles.input, errors.address && styles.inputError]}
+            value={profile.address?.street || ''}
+            onChangeText={(text) => setProfile({ 
+              ...profile, 
+              address: { ...profile.address, street: text } 
+            })}
+            placeholder="123 Main St"
+            placeholderTextColor={colors.textSecondary}
+          />
+
+          <Text style={styles.label}>City *</Text>
+          <TextInput
+            style={[styles.input, errors.address && styles.inputError]}
+            value={profile.address?.city || ''}
+            onChangeText={(text) => setProfile({ 
+              ...profile, 
+              address: { ...profile.address, city: text } 
+            })}
+            placeholder="City"
+            placeholderTextColor={colors.textSecondary}
+          />
+
+          <View style={styles.row}>
+            <View style={styles.halfInput}>
+              <Text style={styles.label}>State *</Text>
+              <TextInput
+                style={[styles.input, errors.address && styles.inputError]}
+                value={profile.address?.state || ''}
+                onChangeText={(text) => setProfile({ 
+                  ...profile, 
+                  address: { ...profile.address, state: text } 
+                })}
+                placeholder="CA"
+                placeholderTextColor={colors.textSecondary}
+                maxLength={2}
+                autoCapitalize="characters"
+              />
+            </View>
+            <View style={styles.halfInput}>
+              <Text style={styles.label}>ZIP *</Text>
+              <TextInput
+                style={[styles.input, errors.address && styles.inputError]}
+                value={profile.address?.zip || ''}
+                onChangeText={(text) => setProfile({ 
+                  ...profile, 
+                  address: { ...profile.address, zip: text } 
+                })}
+                placeholder="12345"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="number-pad"
+                maxLength={5}
+              />
+            </View>
+          </View>
+          {errors.address && <Text style={styles.errorText}>{errors.address}</Text>}
+
           <Text style={styles.label}>Service Radius (miles)</Text>
           <TextInput
             style={styles.input}
-            value={radius}
-            onChangeText={setRadius}
+            value={String(profile.service_radius_miles || 25)}
+            onChangeText={(text) => setProfile({ 
+              ...profile, 
+              service_radius_miles: parseInt(text) || 25 
+            })}
             placeholder="25"
             placeholderTextColor={colors.textSecondary}
             keyboardType="number-pad"
           />
-        </View>
+        </GlassView>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Business Address</Text>
-          <TextInput
-            style={styles.input}
-            value={address}
-            onChangeText={setAddress}
-            placeholder="123 Main St, City, State 12345"
-            placeholderTextColor={colors.textSecondary}
-          />
-          <Text style={styles.hint}>Used to calculate service area</Text>
-        </View>
-      </GlassView>
-
-      {/* Services */}
-      <GlassView style={styles.section}>
-        <Text style={styles.sectionTitle}>Services</Text>
-        
-        <View style={styles.switchRow}>
-          <View style={styles.switchInfo}>
-            <Text style={styles.label}>Show Services on Profile</Text>
-            <Text style={styles.hint}>Display your services list publicly</Text>
+        {/* Marketplace Section */}
+        <GlassView style={styles.section}>
+          <Text style={styles.sectionTitle}>Marketplace</Text>
+          
+          <Text style={styles.label}>Custom URL Slug *</Text>
+          <View style={styles.slugContainer}>
+            <TextInput
+              style={[styles.input, styles.slugInput, errors.slug && styles.inputError]}
+              value={profile.slug || ''}
+              onChangeText={(text) => {
+                const slug = text.toLowerCase().replace(/[^a-z0-9-]/g, '');
+                setProfile({ ...profile, slug });
+                checkSlugAvailability(slug);
+              }}
+              placeholder="my-business"
+              placeholderTextColor={colors.textSecondary}
+              autoCapitalize="none"
+            />
+            {checkingSlug && <ActivityIndicator size="small" color={colors.primary} />}
+            {slugAvailable === true && (
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check_circle"
+                size={24}
+                color={colors.success}
+              />
+            )}
+            {slugAvailable === false && (
+              <IconSymbol
+                ios_icon_name="xmark.circle.fill"
+                android_material_icon_name="cancel"
+                size={24}
+                color={colors.error}
+              />
+            )}
           </View>
-          <Switch
-            value={servicesVisible}
-            onValueChange={setServicesVisible}
-            trackColor={{ false: colors.glass, true: colors.primary }}
-            thumbColor={colors.text}
-          />
-        </View>
+          {errors.slug && <Text style={styles.errorText}>{errors.slug}</Text>}
+          {slugAvailable === false && (
+            <Text style={styles.errorText}>This slug is already taken</Text>
+          )}
 
-        <TouchableOpacity onPress={() => router.push('/(provider)/services/index' as any)}>
-          <View style={styles.linkButton}>
-            <IconSymbol ios_icon_name="wrench.and.screwdriver.fill" android_material_icon_name="build" size={20} color={colors.primary} />
-            <Text style={styles.linkButtonText}>Manage Services</Text>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={16} color={colors.textSecondary} />
+          <View style={styles.switchRow}>
+            <Text style={styles.label}>Published</Text>
+            <Switch
+              value={profile.is_published}
+              onValueChange={(value) => {
+                if (value) {
+                  handlePublish();
+                } else {
+                  handleUnpublish();
+                }
+              }}
+              trackColor={{ false: colors.glass, true: colors.primary }}
+              thumbColor={colors.text}
+            />
           </View>
-        </TouchableOpacity>
-      </GlassView>
 
-      {/* Social Links */}
-      <GlassView style={styles.section}>
-        <Text style={styles.sectionTitle}>Social Media</Text>
-        
-        <View style={styles.field}>
-          <Text style={styles.label}>Facebook</Text>
-          <TextInput
-            style={styles.input}
-            value={facebookUrl}
-            onChangeText={setFacebookUrl}
-            placeholder="https://facebook.com/yourbusiness"
-            placeholderTextColor={colors.textSecondary}
-            autoCapitalize="none"
-          />
-        </View>
+          {profile.is_published && profile.slug && (
+            <View style={styles.publishedActions}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => router.push(`/p/${profile.slug}`)}
+              >
+                <IconSymbol
+                  ios_icon_name="eye"
+                  android_material_icon_name="visibility"
+                  size={20}
+                  color={colors.primary}
+                />
+                <Text style={styles.actionButtonText}>View Public Page</Text>
+              </TouchableOpacity>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Instagram</Text>
-          <TextInput
-            style={styles.input}
-            value={instagramUrl}
-            onChangeText={setInstagramUrl}
-            placeholder="https://instagram.com/yourbusiness"
-            placeholderTextColor={colors.textSecondary}
-            autoCapitalize="none"
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Website</Text>
-          <TextInput
-            style={styles.input}
-            value={websiteUrl}
-            onChangeText={setWebsiteUrl}
-            placeholder="https://yourbusiness.com"
-            placeholderTextColor={colors.textSecondary}
-            autoCapitalize="none"
-          />
-        </View>
-      </GlassView>
-
-      {/* Portfolio & Reviews Preview */}
-      <GlassView style={styles.section}>
-        <Text style={styles.sectionTitle}>Portfolio & Reviews</Text>
-        
-        <TouchableOpacity>
-          <View style={styles.previewCard}>
-            <IconSymbol ios_icon_name="photo.stack.fill" android_material_icon_name="collections" size={24} color={colors.primary} />
-            <View style={styles.previewInfo}>
-              <Text style={styles.previewTitle}>Portfolio</Text>
-              <Text style={styles.previewDescription}>Coming soon - showcase your work</Text>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={copyShareLink}
+              >
+                <IconSymbol
+                  ios_icon_name="link"
+                  android_material_icon_name="link"
+                  size={20}
+                  color={colors.primary}
+                />
+                <Text style={styles.actionButtonText}>Copy Link</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity>
-          <View style={styles.previewCard}>
-            <IconSymbol ios_icon_name="star.fill" android_material_icon_name="star" size={24} color={colors.primary} />
-            <View style={styles.previewInfo}>
-              <Text style={styles.previewTitle}>Reviews</Text>
-              <Text style={styles.previewDescription}>Coming soon - customer testimonials</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </GlassView>
-
-      {/* Marketplace */}
-      <GlassView style={styles.section}>
-        <Text style={styles.sectionTitle}>Marketplace Settings</Text>
-        
-        <View style={styles.field}>
-          <Text style={styles.label}>Business URL Slug</Text>
-          <TouchableOpacity onPress={() => setShowSlugModal(true)}>
-            <View style={styles.slugDisplay}>
-              <Text style={styles.slugDisplayText}>homebase.app/p/{slug || 'your-slug'}</Text>
-              <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={16} color={colors.primary} />
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.switchRow}>
-          <View style={styles.switchInfo}>
-            <Text style={styles.label}>Publish to Marketplace</Text>
-            <Text style={styles.hint}>Make your business visible to homeowners</Text>
-          </View>
-          <Switch
-            value={isPublished}
-            onValueChange={setIsPublished}
-            trackColor={{ false: colors.glass, true: colors.primary }}
-            thumbColor={colors.text}
-          />
-        </View>
-
-        {isPublished && (
-          <TouchableOpacity onPress={handleViewPublicPage}>
-            <View style={styles.linkButton}>
-              <IconSymbol ios_icon_name="globe" android_material_icon_name="public" size={20} color={colors.primary} />
-              <Text style={styles.linkButtonText}>View Public Page</Text>
-              <IconSymbol ios_icon_name="arrow.up.right" android_material_icon_name="open-in-new" size={16} color={colors.textSecondary} />
-            </View>
-          </TouchableOpacity>
-        )}
-      </GlassView>
-
-      {/* Save Button */}
-      <TouchableOpacity
-        style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-        onPress={handleSave}
-        disabled={saving}
-      >
-        <GlassView style={styles.saveButtonInner}>
-          {saving ? (
-            <ActivityIndicator size="small" color={colors.text} />
-          ) : (
-            <>
-              <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={20} color={colors.primary} />
-              <Text style={styles.saveButtonText}>Save Changes</Text>
-            </>
           )}
         </GlassView>
-      </TouchableOpacity>
-    </ScrollView>
+
+        {/* Preview Button */}
+        <TouchableOpacity
+          style={styles.previewButton}
+          onPress={() => router.push('/provider/business-profile/preview')}
+        >
+          <Text style={styles.previewButtonText}>Preview Public Layout</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 140,
+  scrollView: {
+    flex: 1,
   },
-  centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  scrollContent: {
+    padding: 20,
+    paddingTop: 0,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
   },
   backButton: {
     padding: 8,
   },
-  title: {
-    fontSize: 24,
+  headerTitle: {
+    fontSize: 20,
     fontWeight: '700',
     color: colors.text,
+    flex: 1,
+    textAlign: 'center',
   },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginTop: 12,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  unsavedBanner: {
+    backgroundColor: colors.primary + '20',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  unsavedText: {
+    color: colors.primary,
+    fontSize: 14,
+    textAlign: 'center',
   },
   section: {
     padding: 20,
@@ -626,182 +833,109 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 16,
   },
-  field: {
-    marginBottom: 20,
-  },
   label: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
+    marginTop: 12,
   },
   input: {
     backgroundColor: colors.glass,
-    borderWidth: 1,
     borderColor: colors.glassBorder,
+    borderWidth: 1,
     borderRadius: 12,
     padding: 16,
-    fontSize: 16,
     color: colors.text,
+    fontSize: 16,
+  },
+  inputError: {
+    borderColor: colors.error,
   },
   textArea: {
-    height: 100,
+    backgroundColor: colors.glass,
+    borderColor: colors.glassBorder,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    color: colors.text,
+    fontSize: 16,
+    minHeight: 100,
     textAlignVertical: 'top',
   },
-  hint: {
+  errorText: {
+    color: colors.error,
     fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 6,
+    marginTop: 4,
   },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginTop: 16,
   },
-  switchInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  imageUpload: {
-    backgroundColor: colors.glass,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    borderRadius: 12,
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  imageUploadText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.glass,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-  },
-  linkButtonText: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  previewCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.glass,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    gap: 12,
-  },
-  previewInfo: {
-    flex: 1,
-  },
-  previewTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  previewDescription: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  slugDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.glass,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    borderRadius: 12,
-    padding: 16,
-  },
-  slugDisplayText: {
-    fontSize: 14,
-    color: colors.text,
-    flex: 1,
-  },
-  slugPreview: {
-    flexDirection: 'row',
-    marginTop: 8,
-  },
-  slugPreviewText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  slugStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 6,
-  },
-  slugStatusText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  saveButton: {
-    marginTop: 8,
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonInner: {
+  uploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 18,
+    backgroundColor: colors.glass,
+    borderColor: colors.primary,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
     gap: 8,
   },
-  saveButtonText: {
+  uploadButtonText: {
+    color: colors.primary,
     fontSize: 16,
     fontWeight: '600',
-    color: colors.text,
   },
-  modalOverlay: {
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  halfInput: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  slugContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
+    gap: 8,
   },
-  modalContent: {
-    width: '100%',
-    maxWidth: 400,
-    padding: 24,
+  slugInput: {
+    flex: 1,
   },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 8,
-    textAlign: 'center',
+  publishedActions: {
+    marginTop: 16,
+    gap: 12,
   },
-  modalSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 24,
-    textAlign: 'center',
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.glass,
+    borderColor: colors.primary,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    gap: 8,
   },
-  modalButton: {
-    marginTop: 8,
+  actionButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '600',
   },
-  modalButtonInner: {
+  previewButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
     padding: 16,
     alignItems: 'center',
+    marginBottom: 16,
   },
-  modalButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+  previewButtonText: {
     color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
