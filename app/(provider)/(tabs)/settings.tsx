@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
@@ -9,10 +9,11 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, logout } = useAuth();
-  const [publishedToMarketplace, setPublishedToMarketplace] = useState(false);
+  const { user, profile, organization, logout, switchProfile } = useAuth();
+  const [publishedToMarketplace, setPublishedToMarketplace] = useState(organization?.published_to_marketplace || false);
   const [pushNotifications, setPushNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
+  const [switching, setSwitching] = useState(false);
 
   const handleLogout = () => {
     Alert.alert(
@@ -23,8 +24,8 @@ export default function SettingsScreen() {
         { 
           text: 'Logout', 
           style: 'destructive',
-          onPress: () => {
-            logout();
+          onPress: async () => {
+            await logout();
             router.replace('/auth/login');
           }
         },
@@ -32,14 +33,76 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleSwitchProfile = async () => {
+    Alert.alert(
+      'Switch Profile',
+      'Switch to Homeowner view?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Switch',
+          onPress: async () => {
+            try {
+              setSwitching(true);
+              await switchProfile('homeowner');
+              router.replace('/(homeowner)/(tabs)/');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to switch profile');
+            } finally {
+              setSwitching(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Settings</Text>
+      {/* Header with Logo */}
+      <View style={styles.header}>
+        <Image
+          source={require('@/assets/images/4d3cae05-9ebb-4fdb-a402-bcee823fa1a2.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Text style={styles.title}>More</Text>
+      </View>
 
       {/* Profile Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Profile</Text>
-        <TouchableOpacity onPress={() => router.push('/(provider)/settings/profile')}>
+        <GlassView style={styles.profileCard}>
+          <View style={styles.profileHeader}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{user?.name?.[0] || 'P'}</Text>
+            </View>
+            <View style={styles.profileInfo}>
+              <Text style={styles.profileName}>{user?.name}</Text>
+              <Text style={styles.profileEmail}>{user?.email}</Text>
+              <View style={styles.badge}>
+                <IconSymbol ios_icon_name="briefcase.fill" android_material_icon_name="business" size={12} color={colors.primary} />
+                <Text style={styles.badgeText}>PROVIDER</Text>
+              </View>
+            </View>
+          </View>
+        </GlassView>
+
+        {/* Switch Profile */}
+        <TouchableOpacity onPress={handleSwitchProfile} disabled={switching}>
+          <GlassView style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <IconSymbol ios_icon_name="arrow.left.arrow.right" android_material_icon_name="swap-horiz" size={24} color={colors.accent} />
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Switch Profile</Text>
+                <Text style={styles.settingDescription}>Toggle between Homeowner and Provider views</Text>
+              </View>
+            </View>
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+          </GlassView>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.push('/(provider)/settings/profile' as any)}>
           <GlassView style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="account-circle" size={24} color={colors.primary} />
@@ -56,7 +119,7 @@ export default function SettingsScreen() {
       {/* Payment Settings */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Payments</Text>
-        <TouchableOpacity onPress={() => router.push('/(provider)/settings/payment')}>
+        <TouchableOpacity onPress={() => router.push('/(provider)/settings/payment' as any)}>
           <GlassView style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="payment" size={24} color={colors.success} />
@@ -68,7 +131,7 @@ export default function SettingsScreen() {
             <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
           </GlassView>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.push('/(provider)/settings/billing')}>
+        <TouchableOpacity onPress={() => router.push('/(provider)/settings/billing' as any)}>
           <GlassView style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="receipt" size={24} color={colors.accent} />
@@ -102,23 +165,6 @@ export default function SettingsScreen() {
             thumbColor={colors.text}
           />
         </GlassView>
-      </View>
-
-      {/* Integrations */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Integrations</Text>
-        <TouchableOpacity onPress={() => Alert.alert('Coming Soon', 'Google Calendar sync will be available soon!')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={24} color={colors.warning} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Calendar Sync</Text>
-                <Text style={styles.settingDescription}>Connect Google Calendar</Text>
-              </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
       </View>
 
       {/* Notifications */}
@@ -156,35 +202,6 @@ export default function SettingsScreen() {
         </GlassView>
       </View>
 
-      {/* App Settings */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>App</Text>
-        <TouchableOpacity onPress={() => Alert.alert('Help & Support', 'Contact support at support@homebase.com')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="questionmark.circle.fill" android_material_icon_name="help" size={24} color={colors.accent} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Help & Support</Text>
-                <Text style={styles.settingDescription}>Get help with the app</Text>
-              </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => Alert.alert('About', 'HomeBase Pro v1.0.0')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="info.circle.fill" android_material_icon_name="info" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>About</Text>
-                <Text style={styles.settingDescription}>App version and info</Text>
-              </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
-
       {/* Logout */}
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <IconSymbol ios_icon_name="arrow.right.square.fill" android_material_icon_name="logout" size={20} color={colors.error} />
@@ -198,13 +215,21 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 120,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    marginBottom: 16,
   },
   title: {
     fontSize: 32,
     fontWeight: '800',
     color: colors.text,
-    marginBottom: 32,
   },
   section: {
     marginBottom: 32,
@@ -215,6 +240,57 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 12,
     paddingLeft: 4,
+  },
+  profileCard: {
+    padding: 20,
+    marginBottom: 12,
+  },
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  avatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  profileEmail: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
   },
   settingItem: {
     flexDirection: 'row',

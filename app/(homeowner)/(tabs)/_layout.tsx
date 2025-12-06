@@ -20,14 +20,14 @@ export default function HomeownerTabLayout() {
     {
       name: 'bookings',
       route: '/(homeowner)/(tabs)/bookings',
-      icon: 'calendar',
+      icon: 'calendar-today',
       label: 'Bookings',
     },
     {
       name: 'settings',
       route: '/(homeowner)/(tabs)/settings',
-      icon: 'settings',
-      label: 'Settings',
+      icon: 'more-horiz',
+      label: 'More',
     },
   ];
 

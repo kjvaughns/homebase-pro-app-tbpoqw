@@ -4,20 +4,38 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert,
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { useLLM } from '@/hooks/useLLM';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function BusinessDescription() {
   const router = useRouter();
+  const { organization } = useAuth();
+  const { generateText, loading } = useLLM();
   const [description, setDescription] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleGenerateAI = async () => {
-    setIsGenerating(true);
-    // Simulate AI generation - in production, call your AI service
-    setTimeout(() => {
-      const generatedDescription = 'We are a professional service provider dedicated to delivering high-quality workmanship and exceptional customer service. With years of experience in the industry, we pride ourselves on reliability, attention to detail, and customer satisfaction. Our team of skilled professionals is committed to exceeding your expectations on every project.';
-      setDescription(generatedDescription);
-      setIsGenerating(false);
-    }, 2000);
+    if (!organization) {
+      Alert.alert('Error', 'Organization not found');
+      return;
+    }
+
+    try {
+      const prompt = `Generate a professional business description for a ${organization.service_categories.join(', ')} service provider named "${organization.business_name}". The description should be engaging, highlight expertise, and emphasize customer satisfaction. Keep it to 2-3 sentences.`;
+
+      const result = await generateText({
+        prompt,
+        system: 'You are a professional business copywriter specializing in home service businesses.',
+        temperature: 0.7,
+        max_tokens: 200,
+      });
+
+      if (result?.text) {
+        setDescription(result.text.trim());
+      }
+    } catch (error) {
+      console.error('Error generating description:', error);
+      Alert.alert('Error', 'Failed to generate description. Please try again.');
+    }
   };
 
   const handleNext = () => {
@@ -62,13 +80,13 @@ export default function BusinessDescription() {
       <TouchableOpacity 
         style={styles.aiButton} 
         onPress={handleGenerateAI}
-        disabled={isGenerating}
+        disabled={loading}
       >
-        {isGenerating ? (
+        {loading ? (
           <ActivityIndicator color={colors.text} />
         ) : (
           <>
-            <IconSymbol ios_icon_name="sparkles" android_material_icon_name="auto-awesome" size={20} color={colors.text} />
+            <IconSymbol ios_icon_name="sparkles" android_material_icon_name="auto-awesome" size={20} color={colors.accent} />
             <Text style={styles.aiButtonText}>Generate with AI</Text>
           </>
         )}

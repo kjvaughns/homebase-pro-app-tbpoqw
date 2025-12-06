@@ -2,6 +2,7 @@
 import React from 'react';
 import { Stack } from 'expo-router';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
+import FloatingActionButton from '@/components/FloatingActionButton';
 
 export default function ProviderTabLayout() {
   const tabs: TabBarItem[] = [
@@ -9,12 +10,12 @@ export default function ProviderTabLayout() {
       name: 'index',
       route: '/(provider)/(tabs)/',
       icon: 'home',
-      label: 'Dashboard',
+      label: 'Home',
     },
     {
       name: 'schedule',
       route: '/(provider)/(tabs)/schedule',
-      icon: 'calendar',
+      icon: 'calendar-today',
       label: 'Schedule',
     },
     {
@@ -26,8 +27,8 @@ export default function ProviderTabLayout() {
     {
       name: 'settings',
       route: '/(provider)/(tabs)/settings',
-      icon: 'settings',
-      label: 'Settings',
+      icon: 'more-horiz',
+      label: 'More',
     },
   ];
 
@@ -44,6 +45,7 @@ export default function ProviderTabLayout() {
         <Stack.Screen name="clients" />
         <Stack.Screen name="settings" />
       </Stack>
+      <FloatingActionButton />
       <FloatingTabBar tabs={tabs} />
     </>
   );
