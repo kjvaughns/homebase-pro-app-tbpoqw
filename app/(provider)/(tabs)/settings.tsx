@@ -34,27 +34,20 @@ export default function SettingsScreen() {
   };
 
   const handleSwitchProfile = async () => {
-    Alert.alert(
-      'Switch Profile',
-      'Switch to Homeowner view?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Switch',
-          onPress: async () => {
-            try {
-              setSwitching(true);
-              await switchProfile('homeowner');
-              router.replace('/(homeowner)/(tabs)/');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to switch profile');
-            } finally {
-              setSwitching(false);
-            }
-          },
-        },
-      ]
-    );
+    if (switching) {
+      console.log('Already switching, ignoring...');
+      return;
+    }
+    
+    try {
+      console.log('Switch profile button pressed');
+      setSwitching(true);
+      await switchProfile('homeowner');
+    } catch (error) {
+      console.error('Switch profile error:', error);
+    } finally {
+      setSwitching(false);
+    }
   };
 
   return (
@@ -90,12 +83,14 @@ export default function SettingsScreen() {
 
         {/* Switch Profile */}
         <TouchableOpacity onPress={handleSwitchProfile} disabled={switching}>
-          <GlassView style={styles.settingItem}>
+          <GlassView style={[styles.settingItem, switching && styles.settingItemDisabled]}>
             <View style={styles.settingLeft}>
               <IconSymbol ios_icon_name="arrow.left.arrow.right" android_material_icon_name="swap-horiz" size={24} color={colors.accent} />
               <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Switch Profile</Text>
-                <Text style={styles.settingDescription}>Toggle between Homeowner and Provider views</Text>
+                <Text style={styles.settingLabel}>
+                  {switching ? 'Switching...' : 'Switch to Homeowner'}
+                </Text>
+                <Text style={styles.settingDescription}>View and manage your home services</Text>
               </View>
             </View>
             <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
@@ -298,6 +293,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     marginBottom: 12,
+  },
+  settingItemDisabled: {
+    opacity: 0.5,
   },
   settingLeft: {
     flexDirection: 'row',

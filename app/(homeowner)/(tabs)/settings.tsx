@@ -30,27 +30,20 @@ export default function HomeownerSettings() {
   };
 
   const handleSwitchProfile = async () => {
-    Alert.alert(
-      'Switch Profile',
-      'Do you want to switch to Provider view or create a Provider profile?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Switch to Provider',
-          onPress: async () => {
-            try {
-              setSwitching(true);
-              await switchProfile('provider');
-              router.replace('/(provider)/(tabs)/');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to switch profile');
-            } finally {
-              setSwitching(false);
-            }
-          },
-        },
-      ]
-    );
+    if (switching) {
+      console.log('Already switching, ignoring...');
+      return;
+    }
+    
+    try {
+      console.log('Switch profile button pressed');
+      setSwitching(true);
+      await switchProfile('provider');
+    } catch (error) {
+      console.error('Switch profile error:', error);
+    } finally {
+      setSwitching(false);
+    }
   };
 
   return (
@@ -88,7 +81,7 @@ export default function HomeownerSettings() {
 
         {/* Switch Profile */}
         <TouchableOpacity onPress={handleSwitchProfile} disabled={switching}>
-          <GlassView style={styles.menuItem}>
+          <GlassView style={[styles.menuItem, switching && styles.menuItemDisabled]}>
             <IconSymbol
               ios_icon_name="arrow.left.arrow.right"
               android_material_icon_name="swap-horiz"
@@ -96,8 +89,10 @@ export default function HomeownerSettings() {
               color={colors.accent}
             />
             <View style={styles.menuTextContainer}>
-              <Text style={styles.menuText}>Switch Profile</Text>
-              <Text style={styles.menuSubtext}>Toggle between Homeowner and Provider views</Text>
+              <Text style={styles.menuText}>
+                {switching ? 'Switching...' : 'Switch to Provider'}
+              </Text>
+              <Text style={styles.menuSubtext}>Manage your business and clients</Text>
             </View>
             <IconSymbol
               ios_icon_name="chevron.right"
@@ -108,7 +103,7 @@ export default function HomeownerSettings() {
           </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/homeowner/profile/edit')}>
+        <TouchableOpacity onPress={() => router.push('/(homeowner)/profile/edit')}>
           <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="person.fill"
@@ -126,7 +121,7 @@ export default function HomeownerSettings() {
           </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/homeowner/homes/')}>
+        <TouchableOpacity onPress={() => router.push('/(homeowner)/homes/')}>
           <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="house.fill"
@@ -144,7 +139,7 @@ export default function HomeownerSettings() {
           </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/homeowner/my-providers')}>
+        <TouchableOpacity onPress={() => router.push('/(homeowner)/my-providers')}>
           <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="star.fill"
@@ -162,7 +157,7 @@ export default function HomeownerSettings() {
           </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/homeowner/subscriptions')}>
+        <TouchableOpacity onPress={() => router.push('/(homeowner)/subscriptions')}>
           <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="repeat"
@@ -180,7 +175,7 @@ export default function HomeownerSettings() {
           </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/homeowner/payment-methods')}>
+        <TouchableOpacity onPress={() => router.push('/(homeowner)/payment-methods')}>
           <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="creditcard.fill"
@@ -201,7 +196,7 @@ export default function HomeownerSettings() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Preferences</Text>
-        <TouchableOpacity onPress={() => router.push('/homeowner/notifications')}>
+        <TouchableOpacity onPress={() => router.push('/(homeowner)/notifications')}>
           <GlassView style={styles.menuItem}>
             <IconSymbol
               ios_icon_name="bell.fill"
@@ -326,6 +321,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     gap: 12,
+  },
+  menuItemDisabled: {
+    opacity: 0.5,
   },
   menuTextContainer: {
     flex: 1,

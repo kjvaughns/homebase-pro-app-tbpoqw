@@ -117,7 +117,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (orgData) {
             console.log('Organization loaded:', orgData.id);
             setOrganization(orgData);
+          } else {
+            setOrganization(null);
           }
+        } else {
+          setOrganization(null);
         }
       }
     } catch (error) {
@@ -344,22 +348,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const switchProfile = async (role: UserRole) => {
-    if (!profile) return;
+  const switchProfile = async (targetRole: UserRole) => {
+    if (!profile || !session) {
+      console.error('No profile or session available');
+      Alert.alert('Error', 'Unable to switch profile. Please try logging in again.');
+      return;
+    }
 
     try {
-      console.log('Switching profile to:', role);
+      console.log('=== SWITCH PROFILE START ===');
+      console.log('Current role:', profile.role);
+      console.log('Target role:', targetRole);
       
-      // Check if switching to provider and no organization exists
-      if (role === 'provider') {
-        const { data: existingOrg } = await supabase
+      // If already on the target role, just navigate
+      if (profile.role === targetRole) {
+        console.log('Already on target role, navigating...');
+        if (targetRole === 'provider') {
+          router.replace('/(provider)/(tabs)');
+        } else {
+          router.replace('/(homeowner)/(tabs)');
+        }
+        return;
+      }
+
+      // Check if switching to provider
+      if (targetRole === 'provider') {
+        console.log('Switching to provider...');
+        
+        // Check if organization exists
+        const { data: existingOrg, error: orgCheckError } = await supabase
           .from('organizations')
           .select('*')
           .eq('owner_id', profile.id)
-          .single();
+          .maybeSingle();
+
+        if (orgCheckError) {
+          console.error('Error checking organization:', orgCheckError);
+          throw orgCheckError;
+        }
+
+        console.log('Existing organization:', existingOrg ? 'found' : 'not found');
 
         if (!existingOrg) {
-          // Show alert asking if they want to create a provider account
+          // No organization exists, ask to create one
           Alert.alert(
             'Create Provider Account',
             'You don\'t have a provider account yet. Would you like to create one?',
@@ -369,13 +400,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 text: 'Create Account',
                 onPress: async () => {
                   try {
-                    // Update profile role
+                    console.log('Creating provider account...');
+                    
+                    // Update profile role first
                     const { error: roleError } = await supabase
                       .from('profiles')
-                      .update({ role: 'provider' })
+                      .update({ role: 'provider', updated_at: new Date().toISOString() })
                       .eq('id', profile.id);
 
-                    if (roleError) throw roleError;
+                    if (roleError) {
+                      console.error('Error updating role:', roleError);
+                      throw roleError;
+                    }
+
+                    console.log('Role updated successfully');
 
                     // Create organization
                     const { error: orgError } = await supabase
@@ -386,21 +424,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         onboarding_completed: false,
                       });
 
-                    if (orgError) throw orgError;
+                    if (orgError) {
+                      console.error('Error creating organization:', orgError);
+                      throw orgError;
+                    }
 
-                    await refreshProfile();
+                    console.log('Organization created successfully');
 
-                    Alert.alert(
-                      'Provider Account Created',
-                      'Let\'s set up your business profile!',
-                      [{ 
-                        text: 'Continue',
-                        onPress: () => {
-                          router.replace('/(provider)/onboarding/business-basics');
-                        }
-                      }]
-                    );
-                  } catch (error) {
+                    // Refresh profile data
+                    await loadUserData(session.user.id);
+
+                    console.log('Navigating to onboarding...');
+                    // Small delay to ensure state is updated
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    router.replace('/(provider)/onboarding/business-basics');
+                  } catch (error: any) {
                     console.error('Error creating provider account:', error);
                     Alert.alert('Error', 'Failed to create provider account. Please try again.');
                   }
@@ -418,14 +456,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               [{ 
                 text: 'Continue',
                 onPress: async () => {
-                  // Update role
-                  await supabase
-                    .from('profiles')
-                    .update({ role: 'provider' })
-                    .eq('id', profile.id);
-                  
-                  await refreshProfile();
-                  router.replace('/(provider)/onboarding/business-basics');
+                  try {
+                    console.log('Updating role and navigating to onboarding...');
+                    
+                    // Update role
+                    const { error: roleError } = await supabase
+                      .from('profiles')
+                      .update({ role: 'provider', updated_at: new Date().toISOString() })
+                      .eq('id', profile.id);
+                    
+                    if (roleError) throw roleError;
+
+                    await loadUserData(session.user.id);
+                    
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    router.replace('/(provider)/onboarding/business-basics');
+                  } catch (error: any) {
+                    console.error('Error switching to provider:', error);
+                    Alert.alert('Error', 'Failed to switch profile. Please try again.');
+                  }
                 }
               }]
             );
@@ -434,54 +483,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Check if switching to homeowner and no home exists
-      if (role === 'homeowner') {
-        const { data: existingHomes } = await supabase
+      // Check if switching to homeowner
+      if (targetRole === 'homeowner') {
+        console.log('Switching to homeowner...');
+        
+        const { data: existingHomes, error: homesError } = await supabase
           .from('homes')
           .select('*')
           .eq('homeowner_id', profile.id);
 
+        if (homesError) {
+          console.error('Error checking homes:', homesError);
+          throw homesError;
+        }
+
+        console.log('Existing homes:', existingHomes?.length || 0);
+
         if (!existingHomes || existingHomes.length === 0) {
-          // Show alert asking if they want to create a homeowner account
+          // No homes exist, ask to add one
           Alert.alert(
-            'Create Homeowner Account',
-            'You don\'t have any homes added yet. Would you like to add your first home?',
+            'Switch to Homeowner',
+            'You don\'t have any homes added yet. Would you like to add your first home or skip for now?',
             [
-              { text: 'Skip for Now', onPress: async () => {
-                // Update role and navigate
-                await supabase
-                  .from('profiles')
-                  .update({ role: 'homeowner' })
-                  .eq('id', profile.id);
-                
-                await refreshProfile();
-                router.replace('/(homeowner)/(tabs)');
-              }},
+              { 
+                text: 'Skip for Now', 
+                onPress: async () => {
+                  try {
+                    console.log('Skipping home setup, updating role...');
+                    
+                    // Update role and navigate
+                    const { error: roleError } = await supabase
+                      .from('profiles')
+                      .update({ role: 'homeowner', updated_at: new Date().toISOString() })
+                      .eq('id', profile.id);
+                    
+                    if (roleError) throw roleError;
+
+                    await loadUserData(session.user.id);
+                    
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    router.replace('/(homeowner)/(tabs)');
+                  } catch (error: any) {
+                    console.error('Error switching to homeowner:', error);
+                    Alert.alert('Error', 'Failed to switch profile. Please try again.');
+                  }
+                }
+              },
               {
                 text: 'Add Home',
                 onPress: async () => {
                   try {
+                    console.log('Navigating to add home...');
+                    
                     // Update profile role
                     const { error: roleError } = await supabase
                       .from('profiles')
-                      .update({ role: 'homeowner' })
+                      .update({ role: 'homeowner', updated_at: new Date().toISOString() })
                       .eq('id', profile.id);
 
                     if (roleError) throw roleError;
 
-                    await refreshProfile();
+                    await loadUserData(session.user.id);
 
-                    Alert.alert(
-                      'Homeowner Account Ready',
-                      'Let\'s add your first home!',
-                      [{ 
-                        text: 'Continue',
-                        onPress: () => {
-                          router.replace('/(homeowner)/onboarding/profile');
-                        }
-                      }]
-                    );
-                  } catch (error) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    router.replace('/(homeowner)/onboarding/profile');
+                  } catch (error: any) {
                     console.error('Error creating homeowner account:', error);
                     Alert.alert('Error', 'Failed to create homeowner account. Please try again.');
                   }
@@ -493,36 +559,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Update profile role
-      const { error } = await supabase
+      // If we get here, we can switch directly
+      console.log('Switching role directly...');
+      const { error: updateError } = await supabase
         .from('profiles')
-        .update({ role })
+        .update({ role: targetRole, updated_at: new Date().toISOString() })
         .eq('id', profile.id);
 
-      if (error) throw error;
+      if (updateError) {
+        console.error('Error updating role:', updateError);
+        throw updateError;
+      }
 
-      await refreshProfile();
+      console.log('Role updated successfully');
+
+      // Refresh profile data
+      await loadUserData(session.user.id);
       
-      Alert.alert(
-        'Profile Switched',
-        `You are now using your ${role} profile.`,
-        [{ text: 'OK' }]
-      );
-
+      console.log('Navigating to dashboard...');
       // Navigate to appropriate dashboard
-      if (role === 'provider') {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      if (targetRole === 'provider') {
         router.replace('/(provider)/(tabs)');
       } else {
         router.replace('/(homeowner)/(tabs)');
       }
-    } catch (error) {
+
+      Alert.alert(
+        'Profile Switched',
+        `You are now using your ${targetRole} profile.`,
+        [{ text: 'OK' }]
+      );
+      
+      console.log('=== SWITCH PROFILE END ===');
+    } catch (error: any) {
       console.error('Error switching profile:', error);
       Alert.alert(
         'Switch Failed',
         'Unable to switch profile. Please try again.',
         [{ text: 'OK' }]
       );
-      throw error;
     }
   };
 
