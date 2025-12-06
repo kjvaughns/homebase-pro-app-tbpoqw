@@ -1,17 +1,44 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Pressable,
+  Modal,
+  TextInput,
+  Alert,
+} from 'react-native';
 import { router } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
+import * as Clipboard from 'expo-clipboard';
+import { useToast } from '@/contexts/ToastContext';
+
+interface FinancialData {
+  mtd_revenue_cents: number;
+  outstanding_invoices_count: number;
+  outstanding_invoices_total_cents: number;
+  stripe_connected: boolean;
+  stripe_balance_cents: number;
+  recent_payments: any[];
+}
 
 export default function MoneyHomeScreen() {
   const { organization } = useAuth();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [financials, setFinancials] = useState<any>(null);
+  const [financials, setFinancials] = useState<FinancialData | null>(null);
+  const [paymentLinkModal, setPaymentLinkModal] = useState(false);
+  const [linkAmount, setLinkAmount] = useState('');
+  const [linkDescription, setLinkDescription] = useState('');
+  const [creatingLink, setCreatingLink] = useState(false);
 
   useEffect(() => {
     loadFinancials();
@@ -23,13 +50,13 @@ export default function MoneyHomeScreen() {
     try {
       setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       const response = await fetch(
         `https://qjuilxfvqvmoqykpdugi.supabase.co/functions/v1/provider-financials`,
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
+            Authorization: `Bearer ${session?.access_token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -43,7 +70,7 @@ export default function MoneyHomeScreen() {
       setFinancials(result);
     } catch (error) {
       console.error('Error loading financials:', error);
-      Alert.alert('Error', 'Failed to load financial data');
+      showToast('Failed to load financial data', 'error');
     } finally {
       setLoading(false);
     }
@@ -53,144 +80,411 @@ export default function MoneyHomeScreen() {
     return `$${(cents / 100).toFixed(2)}`;
   };
 
+  const handleCreatePaymentLink = async () => {
+    if (!linkAmount || parseFloat(linkAmount) <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount');
+      return;
+    }
+
+    try {
+      setCreatingLink(true);
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch(
+        `https://qjuilxfvqvmoqykpdugi.supabase.co/functions/v1/create-payment-link`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session?.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            organization_id: organization?.id,
+            amount_cents: Math.round(parseFloat(linkAmount) * 100),
+            description: linkDescription || 'Payment',
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      // Copy link to clipboard
+      if (result.payment_link_url) {
+        await Clipboard.setStringAsync(result.payment_link_url);
+        showToast('Payment link copied to clipboard!', 'success');
+      }
+
+      setPaymentLinkModal(false);
+      setLinkAmount('');
+      setLinkDescription('');
+      loadFinancials();
+    } catch (error: any) {
+      console.error('Error creating payment link:', error);
+      Alert.alert('Error', error.message || 'Failed to create payment link');
+    } finally {
+      setCreatingLink(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={[commonStyles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading financials...</Text>
+        <Text style={styles.loadingText}>Loading Money Hub...</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron-left" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Money</Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <>
+      <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="chevron-left"
+              size={24}
+              color={colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={styles.title}>Money Hub</Text>
+          <View style={{ width: 24 }} />
+        </View>
 
-      {/* Financial Overview */}
-      <View style={styles.statsGrid}>
-        <GlassView style={styles.statCard}>
-          <IconSymbol ios_icon_name="dollarsign.circle.fill" android_material_icon_name="attach-money" size={32} color={colors.primary} />
-          <Text style={styles.statValue}>{formatCurrency(financials?.total_revenue_cents || 0)}</Text>
-          <Text style={styles.statLabel}>Total Revenue</Text>
-        </GlassView>
-
-        <GlassView style={styles.statCard}>
-          <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar-today" size={32} color={colors.accent} />
-          <Text style={styles.statValue}>{formatCurrency(financials?.mtd_revenue_cents || 0)}</Text>
-          <Text style={styles.statLabel}>MTD Revenue</Text>
-        </GlassView>
-
-        <GlassView style={styles.statCard}>
-          <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={32} color={colors.warning} />
-          <Text style={styles.statValue}>{formatCurrency(financials?.outstanding_balance_cents || 0)}</Text>
-          <Text style={styles.statLabel}>Outstanding</Text>
-        </GlassView>
-
-        <GlassView style={styles.statCard}>
-          <IconSymbol 
-            ios_icon_name={financials?.stripe_connected ? "checkmark.circle.fill" : "xmark.circle.fill"} 
-            android_material_icon_name={financials?.stripe_connected ? "check-circle" : "cancel"} 
-            size={32} 
-            color={financials?.stripe_connected ? colors.success : colors.error} 
-          />
-          <Text style={styles.statValue}>{financials?.stripe_connected ? 'Connected' : 'Not Setup'}</Text>
-          <Text style={styles.statLabel}>Stripe</Text>
-        </GlassView>
-      </View>
-
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        
-        <TouchableOpacity onPress={() => router.push('/(provider)/money/create-invoice' as any)}>
-          <GlassView style={styles.actionItem}>
-            <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="description" size={24} color={colors.primary} />
-            <View style={styles.actionInfo}>
-              <Text style={styles.actionLabel}>Create Invoice</Text>
-              <Text style={styles.actionDescription}>Send an invoice to a client</Text>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => router.push('/(provider)/money/payment-link' as any)}>
-          <GlassView style={styles.actionItem}>
-            <IconSymbol ios_icon_name="link" android_material_icon_name="link" size={24} color={colors.accent} />
-            <View style={styles.actionInfo}>
-              <Text style={styles.actionLabel}>Payment Link</Text>
-              <Text style={styles.actionDescription}>Create a quick payment link</Text>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => router.push('/(provider)/money/record-payment' as any)}>
-          <GlassView style={styles.actionItem}>
-            <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check-circle" size={24} color={colors.success} />
-            <View style={styles.actionInfo}>
-              <Text style={styles.actionLabel}>Record Payment</Text>
-              <Text style={styles.actionDescription}>Log a cash or check payment</Text>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
-
-      {/* Recent Payments */}
-      {financials?.recent_payments && financials.recent_payments.length > 0 && (
+        {/* Overview KPI Cards */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Payments</Text>
-          {financials.recent_payments.slice(0, 5).map((payment: any, index: number) => (
-            <GlassView key={index} style={styles.paymentItem}>
-              <View style={styles.paymentInfo}>
-                <Text style={styles.paymentAmount}>{formatCurrency(payment.amount_cents || payment.amount * 100)}</Text>
-                <Text style={styles.paymentDate}>
-                  {new Date(payment.created_at).toLocaleDateString()}
+          <Text style={styles.sectionTitle}>Overview</Text>
+          <View style={styles.kpiGrid}>
+            <Pressable
+              style={({ pressed }) => [styles.kpiCard, pressed && styles.pressed]}
+              onPress={() => router.push('/(provider)/money/analytics' as any)}
+            >
+              <GlassView style={styles.kpiContent}>
+                <IconSymbol
+                  ios_icon_name="chart.bar.fill"
+                  android_material_icon_name="bar-chart"
+                  size={32}
+                  color={colors.primary}
+                />
+                <Text style={styles.kpiValue}>
+                  {formatCurrency(financials?.mtd_revenue_cents || 0)}
+                </Text>
+                <Text style={styles.kpiLabel}>MTD Revenue</Text>
+                <Text style={styles.kpiHint}>Tap for analytics</Text>
+              </GlassView>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.kpiCard, pressed && styles.pressed]}
+              onPress={() => router.push('/(provider)/money?tab=invoices' as any)}
+            >
+              <GlassView style={styles.kpiContent}>
+                <IconSymbol
+                  ios_icon_name="doc.text.fill"
+                  android_material_icon_name="description"
+                  size={32}
+                  color={colors.warning}
+                />
+                <Text style={styles.kpiValue}>
+                  {financials?.outstanding_invoices_count || 0}
+                </Text>
+                <Text style={styles.kpiLabel}>Outstanding Invoices</Text>
+                <Text style={styles.kpiSubValue}>
+                  {formatCurrency(financials?.outstanding_invoices_total_cents || 0)}
+                </Text>
+              </GlassView>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Main Cards */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Financial Tools</Text>
+
+          {/* Payouts */}
+          <Pressable
+            style={({ pressed }) => [pressed && styles.pressed]}
+            onPress={() => router.push('/(provider)/money/payouts' as any)}
+          >
+            <GlassView style={styles.card}>
+              <View style={styles.cardIcon}>
+                <IconSymbol
+                  ios_icon_name="banknote.fill"
+                  android_material_icon_name="account-balance"
+                  size={28}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Payouts</Text>
+                <Text style={styles.cardSubtitle}>View Stripe balance & payout history</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </GlassView>
+          </Pressable>
+
+          {/* Payment Links */}
+          <Pressable
+            style={({ pressed }) => [pressed && styles.pressed]}
+            onPress={() => router.push('/(provider)/money/payment-links' as any)}
+          >
+            <GlassView style={styles.card}>
+              <View style={styles.cardIcon}>
+                <IconSymbol
+                  ios_icon_name="link"
+                  android_material_icon_name="link"
+                  size={28}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Payment Links</Text>
+                <Text style={styles.cardSubtitle}>Create and manage quick payment links</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </GlassView>
+          </Pressable>
+
+          {/* Invoices */}
+          <Pressable
+            style={({ pressed }) => [pressed && styles.pressed]}
+            onPress={() => router.push('/(provider)/money?tab=invoices' as any)}
+          >
+            <GlassView style={styles.card}>
+              <View style={styles.cardIcon}>
+                <IconSymbol
+                  ios_icon_name="doc.text.fill"
+                  android_material_icon_name="description"
+                  size={28}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Invoices</Text>
+                <Text style={styles.cardSubtitle}>All invoices & billing activity</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </GlassView>
+          </Pressable>
+
+          {/* Payments */}
+          <Pressable
+            style={({ pressed }) => [pressed && styles.pressed]}
+            onPress={() => router.push('/(provider)/money?tab=payments' as any)}
+          >
+            <GlassView style={styles.card}>
+              <View style={styles.cardIcon}>
+                <IconSymbol
+                  ios_icon_name="creditcard.fill"
+                  android_material_icon_name="payment"
+                  size={28}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Payments</Text>
+                <Text style={styles.cardSubtitle}>Recent payments received</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </GlassView>
+          </Pressable>
+
+          {/* Pricing & Discounts */}
+          <Pressable
+            style={({ pressed }) => [pressed && styles.pressed]}
+            onPress={() => router.push('/(provider)/money/pricing' as any)}
+          >
+            <GlassView style={styles.card}>
+              <View style={styles.cardIcon}>
+                <IconSymbol
+                  ios_icon_name="tag.fill"
+                  android_material_icon_name="local-offer"
+                  size={28}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Pricing & Discounts</Text>
+                <Text style={styles.cardSubtitle}>Edit default rates & discount rules</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </GlassView>
+          </Pressable>
+
+          {/* Financial Analytics */}
+          <Pressable
+            style={({ pressed }) => [pressed && styles.pressed]}
+            onPress={() => router.push('/(provider)/money/analytics' as any)}
+          >
+            <GlassView style={styles.card}>
+              <View style={styles.cardIcon}>
+                <IconSymbol
+                  ios_icon_name="chart.line.uptrend.xyaxis"
+                  android_material_icon_name="trending-up"
+                  size={28}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Financial Analytics</Text>
+                <Text style={styles.cardSubtitle}>Charts for revenue, jobs, and trends</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </GlassView>
+          </Pressable>
+        </View>
+
+        {/* Footer Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Settings</Text>
+
+          <Pressable
+            style={({ pressed }) => [pressed && styles.pressed]}
+            onPress={() => router.push('/(provider)/money/stripe' as any)}
+          >
+            <GlassView style={styles.card}>
+              <View style={styles.cardIcon}>
+                <IconSymbol
+                  ios_icon_name={financials?.stripe_connected ? 'checkmark.circle.fill' : 'exclamationmark.circle.fill'}
+                  android_material_icon_name={financials?.stripe_connected ? 'check-circle' : 'error'}
+                  size={28}
+                  color={financials?.stripe_connected ? colors.primary : colors.warning}
+                />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Stripe Account Settings</Text>
+                <Text style={styles.cardSubtitle}>
+                  {financials?.stripe_connected ? 'Connected & Active' : 'Setup Required'}
                 </Text>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: payment.status === 'succeeded' ? colors.success + '30' : colors.warning + '30' }]}>
-                <Text style={[styles.statusText, { color: payment.status === 'succeeded' ? colors.success : colors.warning }]}>
-                  {payment.status}
-                </Text>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </GlassView>
+          </Pressable>
+        </View>
+
+        {/* Quick Action Button */}
+        <View style={styles.fabContainer}>
+          <TouchableOpacity
+            style={styles.fab}
+            onPress={() => setPaymentLinkModal(true)}
+            activeOpacity={0.8}
+          >
+            <IconSymbol
+              ios_icon_name="plus"
+              android_material_icon_name="add"
+              size={28}
+              color={colors.text}
+            />
+            <Text style={styles.fabText}>New Payment Link</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* Payment Link Modal */}
+      <Modal
+        visible={paymentLinkModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPaymentLinkModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setPaymentLinkModal(false)}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <GlassView style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Create Payment Link</Text>
+              <Text style={styles.modalSubtitle}>
+                Generate a quick payment link to share with clients
+              </Text>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Amount ($)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="decimal-pad"
+                  value={linkAmount}
+                  onChangeText={setLinkAmount}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Description (Optional)</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="What is this payment for?"
+                  placeholderTextColor={colors.textSecondary}
+                  multiline
+                  numberOfLines={3}
+                  value={linkDescription}
+                  onChangeText={setLinkDescription}
+                />
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonSecondary]}
+                  onPress={() => setPaymentLinkModal(false)}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonPrimary]}
+                  onPress={handleCreatePaymentLink}
+                  disabled={creatingLink}
+                >
+                  {creatingLink ? (
+                    <ActivityIndicator size="small" color={colors.text} />
+                  ) : (
+                    <Text style={styles.modalButtonText}>Create & Copy Link</Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </GlassView>
-          ))}
-        </View>
-      )}
-
-      {/* Settings */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Settings</Text>
-        
-        <TouchableOpacity onPress={() => router.push('/(provider)/settings/payment' as any)}>
-          <GlassView style={styles.actionItem}>
-            <IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="payment" size={24} color={colors.primary} />
-            <View style={styles.actionInfo}>
-              <Text style={styles.actionLabel}>Payment Settings</Text>
-              <Text style={styles.actionDescription}>Stripe Connect & payouts</Text>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => router.push('/(provider)/billing/index' as any)}>
-          <GlassView style={styles.actionItem}>
-            <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="receipt" size={24} color={colors.accent} />
-            <View style={styles.actionInfo}>
-              <Text style={styles.actionLabel}>Billing</Text>
-              <Text style={styles.actionDescription}>Subscription & invoices</Text>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -198,7 +492,7 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
   centerContent: {
     justifyContent: 'center',
@@ -214,8 +508,8 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     color: colors.text,
   },
   loadingText: {
@@ -223,86 +517,179 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 12,
   },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 24,
+  section: {
+    marginBottom: 32,
   },
-  statCard: {
-    flex: 1,
-    minWidth: '47%',
-    padding: 16,
-    alignItems: 'center',
-  },
-  statValue: {
+  sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
-    marginTop: 8,
+    marginBottom: 16,
   },
-  statLabel: {
-    fontSize: 12,
+  kpiGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  kpiCard: {
+    flex: 1,
+  },
+  kpiContent: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  kpiValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
+    marginTop: 12,
+  },
+  kpiLabel: {
+    fontSize: 13,
     color: colors.textSecondary,
     marginTop: 4,
+    textAlign: 'center',
   },
-  section: {
-    marginBottom: 24,
+  kpiSubValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+    marginTop: 4,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 12,
+  kpiHint: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 8,
+    opacity: 0.7,
   },
-  actionItem: {
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
     marginBottom: 12,
     gap: 12,
   },
-  actionInfo: {
-    flex: 1,
-  },
-  actionLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  actionDescription: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  paymentItem: {
-    flexDirection: 'row',
+  cardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.primary + '20',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    marginBottom: 12,
+    justifyContent: 'center',
   },
-  paymentInfo: {
+  cardContent: {
     flex: 1,
   },
-  paymentAmount: {
-    fontSize: 18,
+  cardTitle: {
+    fontSize: 16,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
-  paymentDate: {
+  cardSubtitle: {
     fontSize: 13,
     color: colors.textSecondary,
   },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+  pressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.98 }],
   },
-  statusText: {
-    fontSize: 12,
+  fabContainer: {
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  fab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 16,
+    gap: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  fabText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalCard: {
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 24,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
     fontWeight: '600',
-    textTransform: 'capitalize',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: colors.glass,
+    borderColor: colors.glassBorder,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    color: colors.text,
+    fontSize: 16,
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonPrimary: {
+    backgroundColor: colors.primary,
+  },
+  modalButtonSecondary: {
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  modalButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  modalButtonTextSecondary: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });

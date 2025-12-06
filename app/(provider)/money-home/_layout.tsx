@@ -2,7 +2,7 @@
 import { Stack } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 
-export default function BusinessProfileLayout() {
+export default function MoneyHomeLayout() {
   return (
     <Stack
       screenOptions={{
@@ -14,7 +14,6 @@ export default function BusinessProfileLayout() {
       }}
     >
       <Stack.Screen name="index" />
-      <Stack.Screen name="preview" />
     </Stack>
   );
 }
