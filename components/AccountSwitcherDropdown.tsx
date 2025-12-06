@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, Alert } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -29,10 +29,15 @@ export function AccountSwitcherDropdown({ visible, onClose, anchorPosition }: Ac
   }, [visible, session]);
 
   const checkHomeownerProfile = async () => {
-    if (!session?.user) return;
+    if (!session?.user) {
+      console.log('AccountSwitcher: No session available');
+      return;
+    }
     
     try {
       setLoading(true);
+      console.log('AccountSwitcher: Checking homeowner profile for user:', session.user.id);
+      
       const { data, error } = await supabase
         .from('homeowner_profiles')
         .select('id')
@@ -40,91 +45,126 @@ export function AccountSwitcherDropdown({ visible, onClose, anchorPosition }: Ac
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
-        console.error('Error checking homeowner profile:', error);
+        console.error('AccountSwitcher: Error checking homeowner profile:', error);
       }
 
-      setHasHomeownerProfile(!!data);
+      const exists = !!data;
+      console.log('AccountSwitcher: Homeowner profile exists:', exists);
+      setHasHomeownerProfile(exists);
     } catch (error) {
-      console.error('Exception checking homeowner profile:', error);
+      console.error('AccountSwitcher: Exception checking homeowner profile:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSwitchRole = async (targetRole: 'provider' | 'homeowner') => {
-    if (switching || !profile || !session) return;
+    if (switching || !profile || !session) {
+      console.log('AccountSwitcher: Cannot switch - switching:', switching, 'profile:', !!profile, 'session:', !!session);
+      return;
+    }
 
     // If already on target role, just close
     if (profile.role === targetRole) {
+      console.log('AccountSwitcher: Already on target role:', targetRole);
       onClose();
       return;
     }
 
     try {
       setSwitching(true);
-      console.log('=== ACCOUNT SWITCHER: Switching to', targetRole, '===');
+      console.log('=== ACCOUNT SWITCHER: Starting switch to', targetRole, '===');
+      console.log('Current role:', profile.role);
+      console.log('Session user ID:', session.user.id);
+      console.log('Profile ID:', profile.id);
 
       // If switching to homeowner and no profile exists, create one
       if (targetRole === 'homeowner' && !hasHomeownerProfile) {
-        console.log('Creating homeowner account...');
+        console.log('AccountSwitcher: Creating homeowner account...');
+        
+        // Get the current session token
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        
+        if (!currentSession) {
+          throw new Error('No active session found');
+        }
+
+        console.log('AccountSwitcher: Session token available:', !!currentSession.access_token);
         
         // Call edge function to create homeowner account
-        const { data: createData, error: createError } = await supabase.functions.invoke('create-homeowner-account');
+        const { data: createData, error: createError } = await supabase.functions.invoke('create-homeowner-account', {
+          headers: {
+            Authorization: `Bearer ${currentSession.access_token}`,
+          },
+        });
 
         if (createError) {
-          console.error('Error creating homeowner account:', createError);
+          console.error('AccountSwitcher: Error creating homeowner account:', createError);
+          Alert.alert('Error', `Failed to create homeowner account: ${createError.message}`);
           throw createError;
         }
 
-        console.log('Homeowner account created:', createData);
+        console.log('AccountSwitcher: Homeowner account created:', createData);
         setHasHomeownerProfile(true);
       }
 
-      // Set the user role
-      console.log('Setting user role to:', targetRole);
+      // Set the user role via edge function
+      console.log('AccountSwitcher: Setting user role to:', targetRole);
+      
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      
+      if (!currentSession) {
+        throw new Error('No active session found');
+      }
+
       const { data: roleData, error: roleError } = await supabase.functions.invoke('set-user-role', {
-        body: { role: targetRole }
+        body: { role: targetRole },
+        headers: {
+          Authorization: `Bearer ${currentSession.access_token}`,
+        },
       });
 
       if (roleError) {
-        console.error('Error setting user role:', roleError);
+        console.error('AccountSwitcher: Error setting user role:', roleError);
+        Alert.alert('Error', `Failed to set user role: ${roleError.message}`);
         throw roleError;
       }
 
-      console.log('Role set successfully:', roleData);
+      console.log('AccountSwitcher: Role set successfully:', roleData);
 
       // Persist role to AsyncStorage
       await AsyncStorage.setItem('user_role', targetRole);
-
-      // Update profile role in database
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ role: targetRole, updated_at: new Date().toISOString() })
-        .eq('id', profile.id);
-
-      if (updateError) {
-        console.error('Error updating profile:', updateError);
-        throw updateError;
-      }
+      console.log('AccountSwitcher: Role persisted to AsyncStorage');
 
       // Refresh profile data
       await refreshProfile();
+      console.log('AccountSwitcher: Profile refreshed');
 
       // Close dropdown
       onClose();
 
+      // Small delay to ensure state is updated
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       // Navigate to appropriate dashboard
-      console.log('Navigating to dashboard...');
+      console.log('AccountSwitcher: Navigating to dashboard...');
       if (targetRole === 'provider') {
         router.replace('/(provider)/(tabs)');
       } else {
         router.replace('/(homeowner)/(tabs)');
       }
 
+      // Show success message
+      Alert.alert('Success', `Switched to ${targetRole} account`);
+
       console.log('=== ACCOUNT SWITCHER: Switch complete ===');
-    } catch (error) {
-      console.error('Error switching role:', error);
-      alert('Failed to switch account. Please try again.');
+    } catch (error: any) {
+      console.error('AccountSwitcher: Error switching role:', error);
+      Alert.alert(
+        'Switch Failed',
+        error.message || 'Failed to switch account. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setSwitching(false);
     }
@@ -246,6 +286,12 @@ export function AccountSwitcherDropdown({ visible, onClose, anchorPosition }: Ac
               {switching && (
                 <View style={styles.loadingContainer}>
                   <Text style={styles.loadingText}>Switching account...</Text>
+                </View>
+              )}
+
+              {loading && (
+                <View style={styles.loadingContainer}>
+                  <Text style={styles.loadingText}>Loading...</Text>
                 </View>
               )}
 
