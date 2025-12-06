@@ -137,7 +137,7 @@ export default function FloatingTabBar({
                           android_material_icon_name={tab.icon}
                           ios_icon_name={tab.icon}
                           size={24}
-                          color={isActive ? colors.primary : colors.textSecondary}
+                          color={isActive ? colors.primary : 'rgba(255, 255, 255, 0.7)'}
                         />
                         <Text
                           style={[
@@ -175,15 +175,15 @@ const styles = StyleSheet.create({
   blurContainer: {
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.4,
     shadowRadius: 24,
     elevation: 12,
   },
   innerContainer: {
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   indicator: {
     position: 'absolute',
@@ -191,11 +191,11 @@ const styles = StyleSheet.create({
     left: 8,
     bottom: 6,
     borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   tabsContainer: {
     flexDirection: 'row',
-    height: 64,
+    height: 68,
     alignItems: 'center',
     paddingHorizontal: 8,
   },
@@ -211,13 +211,14 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowColor: 'rgba(0, 0, 0, 1)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    textShadowRadius: 3,
+    fontFamily: 'Inter',
   },
   tabLabelActive: {
     color: colors.text,

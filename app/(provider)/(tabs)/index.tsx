@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
-import { Booking, Invoice, Client } from '@/types';
+import { Booking, Invoice } from '@/types';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -16,9 +16,9 @@ export default function ProviderDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState({
     totalClients: 0,
-    activeSubscribers: 0,
-    mrr: 0,
-    upcomingBookings: 0,
+    jobsCompleted: 0,
+    mtdRevenue: 0,
+    upcomingAppointments: 0,
   });
   const [todaysJobs, setTodaysJobs] = useState<Booking[]>([]);
   const [unpaidInvoices, setUnpaidInvoices] = useState<Invoice[]>([]);
@@ -26,8 +26,7 @@ export default function ProviderDashboard() {
   const [setupTasks, setSetupTasks] = useState({
     stripeSetup: false,
     hasServices: false,
-    hasClients: false,
-    calendarSync: false,
+    hasEnoughClients: false,
   });
 
   useEffect(() => {
@@ -40,30 +39,33 @@ export default function ProviderDashboard() {
     try {
       if (!organization?.id) return;
 
-      // Load clients count
+      // Load total clients count
       const { count: clientsCount } = await supabase
         .from('clients')
         .select('*', { count: 'exact', head: true })
         .eq('organization_id', organization.id);
 
-      // Load active subscriptions count
-      const { count: subsCount } = await supabase
-        .from('subscriptions')
+      // Load jobs completed (all time)
+      const { count: completedCount } = await supabase
+        .from('bookings')
         .select('*', { count: 'exact', head: true })
         .eq('organization_id', organization.id)
-        .eq('status', 'active');
+        .eq('status', 'completed');
 
-      // Calculate MRR from active subscriptions
-      const { data: subscriptions } = await supabase
-        .from('subscriptions')
-        .select('price')
-        .eq('organization_id', organization.id)
-        .eq('status', 'active');
-
-      const mrr = subscriptions?.reduce((sum, sub) => sum + Number(sub.price || 0), 0) || 0;
-
-      // Load upcoming bookings (next 7 days)
+      // Calculate MTD Revenue (sum of payments this month)
       const today = new Date();
+      const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      
+      const { data: monthlyPayments } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('organization_id', organization.id)
+        .eq('status', 'succeeded')
+        .gte('created_at', firstDayOfMonth.toISOString());
+
+      const mtdRevenue = monthlyPayments?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;
+
+      // Load upcoming appointments (next 7 days)
       const nextWeek = new Date(today);
       nextWeek.setDate(today.getDate() + 7);
 
@@ -73,7 +75,7 @@ export default function ProviderDashboard() {
         .eq('organization_id', organization.id)
         .gte('scheduled_date', today.toISOString().split('T')[0])
         .lte('scheduled_date', nextWeek.toISOString().split('T')[0])
-        .neq('status', 'cancelled');
+        .in('status', ['pending', 'confirmed']);
 
       // Load today's jobs
       const { data: todayBookings } = await supabase
@@ -84,7 +86,7 @@ export default function ProviderDashboard() {
         .neq('status', 'cancelled')
         .order('scheduled_time', { ascending: true });
 
-      // Load unpaid invoices
+      // Load unpaid invoices (top 3)
       const { data: invoices } = await supabase
         .from('invoices')
         .select('*, clients(name)')
@@ -100,18 +102,11 @@ export default function ProviderDashboard() {
         .eq('organization_id', organization.id)
         .limit(1);
 
-      const { data: calendarConn } = await supabase
-        .from('calendar_connections')
-        .select('id')
-        .eq('organization_id', organization.id)
-        .eq('sync_enabled', true)
-        .limit(1);
-
       setStats({
         totalClients: clientsCount || 0,
-        activeSubscribers: subsCount || 0,
-        mrr: Math.round(mrr),
-        upcomingBookings: upcomingCount || 0,
+        jobsCompleted: completedCount || 0,
+        mtdRevenue: Math.round(mtdRevenue),
+        upcomingAppointments: upcomingCount || 0,
       });
 
       setTodaysJobs(todayBookings || []);
@@ -120,8 +115,7 @@ export default function ProviderDashboard() {
       setSetupTasks({
         stripeSetup: !!organization.stripe_account_id,
         hasServices: (services?.length || 0) > 0,
-        hasClients: (clientsCount || 0) > 0,
-        calendarSync: (calendarConn?.length || 0) > 0,
+        hasEnoughClients: (clientsCount || 0) >= 3,
       });
 
       setLoading(false);
@@ -136,11 +130,11 @@ export default function ProviderDashboard() {
       case 'clients':
         router.push('/(provider)/(tabs)/clients');
         break;
-      case 'subscribers':
-        router.push('/(provider)/money?tab=subscriptions');
+      case 'completed':
+        router.push('/(provider)/(tabs)/schedule?filter=completed');
         break;
-      case 'mrr':
-        router.push('/(provider)/money?tab=overview');
+      case 'revenue':
+        router.push('/(provider)/money');
         break;
       case 'upcoming':
         router.push('/(provider)/(tabs)/schedule');
@@ -159,9 +153,6 @@ export default function ProviderDashboard() {
       case 'clients':
         router.push('/(provider)/clients/import-csv');
         break;
-      case 'calendar':
-        router.push('/(provider)/settings?tab=integrations');
-        break;
     }
   };
 
@@ -169,11 +160,10 @@ export default function ProviderDashboard() {
 
   // Filter incomplete setup tasks
   const incompleteTasks = [
-    { key: 'stripe', label: 'Finish Stripe setup', completed: setupTasks.stripeSetup },
-    { key: 'service', label: 'Add your first service', completed: setupTasks.hasServices },
-    { key: 'clients', label: 'Import clients', completed: setupTasks.hasClients },
-    { key: 'calendar', label: 'Enable calendar sync', completed: setupTasks.calendarSync },
-  ].filter(task => !task.completed).slice(0, 3);
+    { key: 'stripe', label: 'Finish Stripe Setup', completed: setupTasks.stripeSetup },
+    { key: 'service', label: 'Add services', completed: setupTasks.hasServices },
+    { key: 'clients', label: 'Import clients', completed: setupTasks.hasEnoughClients },
+  ].filter(task => !task.completed);
 
   return (
     <ScrollView 
@@ -189,7 +179,7 @@ export default function ProviderDashboard() {
         </View>
         <TouchableOpacity 
           style={styles.profileChip}
-          onPress={() => router.push('/(provider)/settings')}
+          onPress={() => router.push('/(provider)/(tabs)/settings')}
           activeOpacity={0.7}
         >
           <Text style={styles.profileInitial}>
@@ -216,33 +206,31 @@ export default function ProviderDashboard() {
             </View>
             <Text style={styles.kpiLabel}>Total Clients</Text>
             <Text style={styles.kpiValue}>{stats.totalClients}</Text>
-            <Text style={styles.kpiSubtitle}>all time</Text>
           </GlassView>
         </TouchableOpacity>
 
         <TouchableOpacity 
           style={styles.kpiCard}
-          onPress={() => handleKPIPress('subscribers')}
+          onPress={() => handleKPIPress('completed')}
           activeOpacity={0.7}
         >
           <GlassView style={styles.kpiGlass}>
             <View style={[styles.kpiIcon, { backgroundColor: colors.primary + '20' }]}>
               <IconSymbol
-                ios_icon_name="arrow.clockwise"
-                android_material_icon_name="autorenew"
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check-circle"
                 size={20}
                 color={colors.primary}
               />
             </View>
-            <Text style={styles.kpiLabel}>Active Subscribers</Text>
-            <Text style={styles.kpiValue}>{stats.activeSubscribers}</Text>
-            <Text style={styles.kpiSubtitle}>recurring</Text>
+            <Text style={styles.kpiLabel}>Jobs Completed</Text>
+            <Text style={styles.kpiValue}>{stats.jobsCompleted}</Text>
           </GlassView>
         </TouchableOpacity>
 
         <TouchableOpacity 
           style={styles.kpiCard}
-          onPress={() => handleKPIPress('mrr')}
+          onPress={() => handleKPIPress('revenue')}
           activeOpacity={0.7}
         >
           <GlassView style={styles.kpiGlass}>
@@ -254,9 +242,8 @@ export default function ProviderDashboard() {
                 color={colors.primary}
               />
             </View>
-            <Text style={styles.kpiLabel}>MRR</Text>
-            <Text style={styles.kpiValue}>${stats.mrr}</Text>
-            <Text style={styles.kpiSubtitle}>monthly</Text>
+            <Text style={styles.kpiLabel}>MTD Revenue</Text>
+            <Text style={styles.kpiValue}>${stats.mtdRevenue}</Text>
           </GlassView>
         </TouchableOpacity>
 
@@ -274,9 +261,8 @@ export default function ProviderDashboard() {
                 color={colors.primary}
               />
             </View>
-            <Text style={styles.kpiLabel}>Upcoming</Text>
-            <Text style={styles.kpiValue}>{stats.upcomingBookings}</Text>
-            <Text style={styles.kpiSubtitle}>next 7 days</Text>
+            <Text style={styles.kpiLabel}>Upcoming Appointments</Text>
+            <Text style={styles.kpiValue}>{stats.upcomingAppointments}</Text>
           </GlassView>
         </TouchableOpacity>
       </View>
@@ -291,58 +277,48 @@ export default function ProviderDashboard() {
         </View>
 
         {todaysJobs.length > 0 ? (
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.jobsScroll}
-          >
+          <React.Fragment>
             {todaysJobs.map((booking, index) => (
               <TouchableOpacity
                 key={index}
                 onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
                 activeOpacity={0.7}
+                style={styles.jobCardWrapper}
               >
                 <GlassView style={styles.jobCard}>
-                  <View style={styles.jobHeader}>
-                    <Text style={styles.jobTime}>{booking.scheduled_time}</Text>
-                    <View style={[styles.jobStatus, { 
-                      backgroundColor: booking.status === 'confirmed' 
-                        ? colors.primary + '20' 
-                        : colors.textSecondary + '20' 
-                    }]}>
-                      <Text style={[styles.jobStatusText, {
-                        color: booking.status === 'confirmed' 
-                          ? colors.primary 
-                          : colors.textSecondary
-                      }]}>
-                        {booking.status}
+                  <View style={styles.jobRow}>
+                    <View style={styles.jobLeft}>
+                      <Text style={styles.jobTime}>{booking.scheduled_time}</Text>
+                      <Text style={styles.jobService} numberOfLines={1}>
+                        {booking.service_name}
+                      </Text>
+                      <Text style={styles.jobClient} numberOfLines={1}>
+                        {(booking as any).clients?.name || 'Client'}
                       </Text>
                     </View>
+                    <View style={styles.jobRight}>
+                      {booking.price && (
+                        <Text style={styles.jobPrice}>${booking.price}</Text>
+                      )}
+                      <View style={[styles.jobStatus, { 
+                        backgroundColor: booking.status === 'confirmed' 
+                          ? colors.primary + '20' 
+                          : colors.textSecondary + '20' 
+                      }]}>
+                        <Text style={[styles.jobStatusText, {
+                          color: booking.status === 'confirmed' 
+                            ? colors.primary 
+                            : colors.textSecondary
+                        }]}>
+                          {booking.status}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                  <Text style={styles.jobService} numberOfLines={1}>
-                    {booking.service_name}
-                  </Text>
-                  <Text style={styles.jobClient} numberOfLines={1}>
-                    {(booking as any).clients?.name || 'Client'}
-                  </Text>
-                  <View style={styles.jobLocation}>
-                    <IconSymbol
-                      ios_icon_name="location.fill"
-                      android_material_icon_name="location-on"
-                      size={12}
-                      color={colors.textSecondary}
-                    />
-                    <Text style={styles.jobAddress} numberOfLines={1}>
-                      {booking.address}
-                    </Text>
-                  </View>
-                  {booking.price && (
-                    <Text style={styles.jobPrice}>${booking.price}</Text>
-                  )}
                 </GlassView>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </React.Fragment>
         ) : (
           <GlassView style={styles.emptyState}>
             <IconSymbol
@@ -379,6 +355,7 @@ export default function ProviderDashboard() {
                 key={index}
                 onPress={() => router.push(`/(provider)/money/invoice/${invoice.id}`)}
                 activeOpacity={0.7}
+                style={styles.invoiceCardWrapper}
               >
                 <GlassView style={styles.invoiceCard}>
                   <View style={styles.invoiceHeader}>
@@ -456,7 +433,7 @@ export default function ProviderDashboard() {
 const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
   header: {
     flexDirection: 'row',
@@ -468,14 +445,15 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: 14,
     color: colors.textSecondary,
-    opacity: 0.7,
+    opacity: 0.8,
     marginBottom: 4,
+    fontFamily: 'Inter',
   },
   name: {
-    fontSize: 32,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '600',
     color: colors.text,
-    letterSpacing: -0.5,
+    fontFamily: 'Inter',
   },
   profileChip: {
     width: 48,
@@ -493,12 +471,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
+    fontFamily: 'Inter',
   },
   kpiRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 14,
-    marginBottom: 24,
+    marginBottom: 32,
     gap: 12,
   },
   kpiCard: {
@@ -506,7 +485,7 @@ const styles = StyleSheet.create({
   },
   kpiGlass: {
     padding: 16,
-    height: 140,
+    height: 120,
   },
   kpiIcon: {
     width: 40,
@@ -517,21 +496,17 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   kpiLabel: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textSecondary,
-    opacity: 0.8,
+    opacity: 0.9,
     marginBottom: 8,
+    fontFamily: 'Inter',
   },
   kpiValue: {
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '600',
     color: colors.text,
-    marginBottom: 4,
-  },
-  kpiSubtitle: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    opacity: 0.6,
+    fontFamily: 'Inter',
   },
   section: {
     paddingHorizontal: 20,
@@ -544,72 +519,71 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '600',
     color: colors.text,
+    fontFamily: 'Inter',
   },
   seeAll: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
+    fontFamily: 'Inter',
   },
-  jobsScroll: {
-    paddingRight: 20,
-    gap: 12,
+  jobCardWrapper: {
+    marginBottom: 12,
   },
   jobCard: {
-    width: 240,
     padding: 16,
-    marginRight: 12,
   },
-  jobHeader: {
+  jobRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+  },
+  jobLeft: {
+    flex: 1,
+    marginRight: 12,
   },
   jobTime: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
-  },
-  jobStatus: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  jobStatusText: {
-    fontSize: 10,
-    fontWeight: '600',
-    textTransform: 'capitalize',
+    marginBottom: 6,
+    fontFamily: 'Inter',
   },
   jobService: {
     fontSize: 15,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 4,
+    fontFamily: 'Inter',
   },
   jobClient: {
     fontSize: 13,
     color: colors.textSecondary,
-    marginBottom: 8,
+    fontFamily: 'Inter',
   },
-  jobLocation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 8,
-  },
-  jobAddress: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    flex: 1,
+  jobRight: {
+    alignItems: 'flex-end',
   },
   jobPrice: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.primary,
-    marginTop: 4,
+    marginBottom: 8,
+    fontFamily: 'Inter',
+  },
+  jobStatus: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  jobStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+    fontFamily: 'Inter',
   },
   emptyState: {
     padding: 40,
@@ -620,6 +594,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 12,
     marginBottom: 16,
+    fontFamily: 'Inter',
   },
   emptyButton: {
     backgroundColor: colors.primary,
@@ -631,10 +606,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+    fontFamily: 'Inter',
+  },
+  invoiceCardWrapper: {
+    marginBottom: 12,
   },
   invoiceCard: {
     padding: 16,
-    marginBottom: 12,
   },
   invoiceHeader: {
     flexDirection: 'row',
@@ -647,15 +625,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
+    fontFamily: 'Inter',
   },
   invoiceClient: {
     fontSize: 13,
     color: colors.textSecondary,
+    fontFamily: 'Inter',
   },
   invoiceAmount: {
     fontSize: 24,
     fontWeight: '800',
     color: colors.text,
+    fontFamily: 'Inter',
   },
   invoiceFooter: {
     flexDirection: 'row',
@@ -665,6 +646,7 @@ const styles = StyleSheet.create({
   invoiceDue: {
     fontSize: 12,
     color: colors.textSecondary,
+    fontFamily: 'Inter',
   },
   invoiceStatus: {
     paddingHorizontal: 10,
@@ -675,6 +657,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     textTransform: 'capitalize',
+    fontFamily: 'Inter',
   },
   tasksGrid: {
     flexDirection: 'row',
@@ -698,5 +681,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     flex: 1,
     lineHeight: 18,
+    fontFamily: 'Inter',
   },
 });

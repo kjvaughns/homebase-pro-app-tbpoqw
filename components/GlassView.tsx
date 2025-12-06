@@ -22,7 +22,7 @@ export function GlassView({ children, style, intensity = 40 }: GlassViewProps) {
           overflow: 'hidden',
           shadowColor: '#000',
           shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.2,
+          shadowOpacity: 0.25,
           shadowRadius: 12,
         },
         style,
@@ -35,7 +35,7 @@ export function GlassView({ children, style, intensity = 40 }: GlassViewProps) {
       >
         <View style={{ 
           flex: 1, 
-          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+          backgroundColor: 'rgba(0, 0, 0, 0.35)',
         }}>
           {children}
         </View>

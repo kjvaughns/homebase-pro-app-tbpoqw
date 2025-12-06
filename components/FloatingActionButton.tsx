@@ -16,7 +16,8 @@ const { height: screenHeight } = Dimensions.get('window');
 
 interface FABAction {
   label: string;
-  icon: string;
+  iosIcon: string;
+  androidIcon: string;
   route: string;
 }
 
@@ -27,10 +28,36 @@ export default function FloatingActionButton() {
   const scale = useSharedValue(1);
 
   const actions: FABAction[] = [
-    { label: 'Add Client', icon: 'person-add', route: '/(provider)/clients/add' },
-    { label: 'Create Job', icon: 'event', route: '/(provider)/schedule/create-job' },
-    { label: 'Send Invoice', icon: 'receipt', route: '/(provider)/money/create-invoice' },
-    { label: 'Payment Link', icon: 'link', route: '/(provider)/money/payment-link' },
+    { 
+      label: 'Add Client', 
+      iosIcon: 'person.badge.plus', 
+      androidIcon: 'person-add', 
+      route: '/(provider)/clients/add' 
+    },
+    { 
+      label: 'Create Job', 
+      iosIcon: 'calendar.badge.plus', 
+      androidIcon: 'event', 
+      route: '/(provider)/schedule/create-job' 
+    },
+    { 
+      label: 'Send Invoice', 
+      iosIcon: 'doc.text', 
+      androidIcon: 'receipt', 
+      route: '/(provider)/money/create-invoice' 
+    },
+    { 
+      label: 'Payment Link', 
+      iosIcon: 'link.circle', 
+      androidIcon: 'link', 
+      route: '/(provider)/money/payment-link' 
+    },
+    { 
+      label: 'Ask AI', 
+      iosIcon: 'sparkles', 
+      androidIcon: 'auto-awesome', 
+      route: '/(provider)/ai-assistant' 
+    },
   ];
 
   const toggleMenu = () => {
@@ -38,7 +65,7 @@ export default function FloatingActionButton() {
       damping: 15,
       stiffness: 150,
     });
-    scale.value = withSpring(isExpanded ? 1 : 0.9, {
+    scale.value = withSpring(isExpanded ? 1 : 0.95, {
       damping: 15,
       stiffness: 150,
     });
@@ -77,7 +104,7 @@ export default function FloatingActionButton() {
           activeOpacity={1}
           onPress={toggleMenu}
         >
-          <BlurView intensity={40} tint="dark" style={styles.blurBackdrop}>
+          <BlurView intensity={50} tint="dark" style={styles.blurBackdrop}>
             <View style={styles.menuContainer}>
               {actions.map((action, index) => (
                 <TouchableOpacity
@@ -86,17 +113,19 @@ export default function FloatingActionButton() {
                   onPress={() => handleActionPress(action.route)}
                   activeOpacity={0.8}
                 >
-                  <BlurView intensity={80} tint="dark" style={styles.actionBlur}>
-                    <View style={styles.actionContent}>
-                      <IconSymbol
-                        ios_icon_name={action.icon}
-                        android_material_icon_name={action.icon}
-                        size={24}
-                        color={colors.text}
-                      />
+                  <View style={styles.actionContent}>
+                    <View style={styles.actionLabelContainer}>
                       <Text style={styles.actionLabel}>{action.label}</Text>
                     </View>
-                  </BlurView>
+                    <View style={styles.actionIconCircle}>
+                      <IconSymbol
+                        ios_icon_name={action.iosIcon}
+                        android_material_icon_name={action.androidIcon}
+                        size={20}
+                        color={colors.text}
+                      />
+                    </View>
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -139,44 +168,63 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.5,
     shadowRadius: 16,
     elevation: 12,
   },
   backdrop: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     alignItems: 'center',
+    paddingBottom: 120,
   },
   blurBackdrop: {
     flex: 1,
     width: '100%',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     alignItems: 'center',
+    paddingBottom: 120,
   },
   menuContainer: {
-    width: '80%',
-    maxWidth: 320,
+    width: '85%',
+    maxWidth: 340,
     gap: 12,
+    paddingHorizontal: 20,
   },
   actionButton: {
     borderRadius: 16,
     overflow: 'hidden',
+    backgroundColor: 'rgba(30, 30, 30, 0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  actionBlur: {
-    paddingVertical: 18,
-    paddingHorizontal: 20,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   actionContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  actionLabelContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
   },
   actionLabel: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.text,
+    fontFamily: 'Inter',
+  },
+  actionIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
