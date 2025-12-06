@@ -82,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Wait a bit before retrying
         if (i < retries - 1) {
+          console.log(`Profile not found, retrying... (${i + 1}/${retries})`);
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
@@ -234,11 +235,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         console.error('Signup error:', error);
-        Alert.alert(
-          'Signup Failed',
-          error.message || 'An error occurred during signup. Please try again.',
-          [{ text: 'OK' }]
-        );
+        
+        // Handle specific error cases
+        if (error.message.includes('User already registered') || error.message.includes('already exists')) {
+          Alert.alert(
+            'Account Already Exists',
+            'An account with this email already exists. Please sign in instead or use a different email address.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Go to Sign In',
+                onPress: () => {
+                  setLoading(false);
+                  router.replace('/auth/login');
+                }
+              }
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Signup Failed',
+            error.message || 'An error occurred during signup. Please try again.',
+            [{ text: 'OK' }]
+          );
+        }
+        
         setLoading(false);
         throw error;
       }
@@ -253,12 +274,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           Alert.alert(
             'Confirm Your Email',
             'We\'ve sent a confirmation email to ' + email + '. Please click the link in the email to activate your account, then return here to sign in.',
-            [{ text: 'OK' }]
+            [{ 
+              text: 'OK',
+              onPress: () => {
+                setLoading(false);
+                router.replace('/auth/login');
+              }
+            }]
           );
-          setLoading(false);
-          
-          // Navigate back to login
-          router.replace('/auth/login');
           return;
         }
         
@@ -268,16 +291,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Show success alert
         Alert.alert(
           'Account Created!',
-          'Your account has been created successfully.',
-          [{ text: 'OK' }]
+          'Your account has been created successfully. Let\'s get you set up!',
+          [{ 
+            text: 'Continue',
+            onPress: () => {
+              // Navigate to appropriate onboarding or dashboard
+              if (role === 'provider') {
+                // Check if onboarding is completed
+                supabase
+                  .from('organizations')
+                  .select('onboarding_completed')
+                  .eq('owner_id', data.user.id)
+                  .single()
+                  .then(({ data: orgData }) => {
+                    if (orgData && !orgData.onboarding_completed) {
+                      router.replace('/(provider)/onboarding/business-basics');
+                    } else {
+                      router.replace('/(provider)/(tabs)');
+                    }
+                  });
+              } else {
+                router.replace('/(homeowner)/(tabs)');
+              }
+            }
+          }]
         );
-
-        // Navigate to appropriate dashboard
-        if (role === 'provider') {
-          router.replace('/(provider)/(tabs)');
-        } else {
-          router.replace('/(homeowner)/(tabs)');
-        }
       }
     } catch (error) {
       console.error('Signup exception:', error);

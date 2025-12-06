@@ -15,19 +15,28 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleLogin = async () => {
+    // Clear previous errors
+    setError('');
+
+    // Validation
     if (!email || !password) {
-      console.log('Please fill all fields');
+      setError('Please fill in all fields');
       return;
     }
 
     setLoading(true);
     try {
-      await login(email, password);
+      await login(email.trim().toLowerCase(), password);
       // Navigation is handled in the login function
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
+      // Error is already shown in Alert by AuthContext
+      if (error?.message && !error.message.includes('Invalid') && !error.message.includes('Email not confirmed')) {
+        setError(error.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -75,6 +84,18 @@ export default function LoginScreen() {
         <Text style={styles.title}>Welcome back</Text>
         <Text style={styles.subtitle}>Sign in to your account</Text>
 
+        {error ? (
+          <View style={styles.errorContainer}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="error"
+              size={20}
+              color="#FF6B6B"
+            />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.form}>
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Email</Text>
@@ -83,7 +104,10 @@ export default function LoginScreen() {
               placeholder="john@example.com"
               placeholderTextColor={colors.textSecondary}
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(text) => {
+                setEmail(text);
+                setError('');
+              }}
               keyboardType="email-address"
               autoCapitalize="none"
               editable={!isLoading}
@@ -97,7 +121,10 @@ export default function LoginScreen() {
               placeholder="••••••••"
               placeholderTextColor={colors.textSecondary}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(text) => {
+                setPassword(text);
+                setError('');
+              }}
               secureTextEntry
               editable={!isLoading}
             />
@@ -109,7 +136,10 @@ export default function LoginScreen() {
             disabled={isLoading}
           >
             {isLoading ? (
-              <ActivityIndicator color={colors.text} />
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color={colors.text} />
+                <Text style={[buttonStyles.buttonText, { marginLeft: 8 }]}>Signing In...</Text>
+              </View>
             ) : (
               <Text style={buttonStyles.buttonText}>Sign In</Text>
             )}
@@ -172,6 +202,23 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 24,
   },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+    borderColor: '#FF6B6B',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#FF6B6B',
+    fontWeight: '500',
+  },
   form: {
     gap: 16,
   },
@@ -187,7 +234,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: 0.7,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   footer: {
     flexDirection: 'row',
