@@ -7,6 +7,7 @@ import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { AccountSwitcherDropdown } from '@/components/AccountSwitcherDropdown';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function MoreScreen() {
   const router = useRouter();
@@ -21,6 +22,61 @@ export default function MoreScreen() {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  const [tapCount, setTapCount] = useState(0);
+  const [showTestButton, setShowTestButton] = useState(false);
+
+  const handleLogoTap = () => {
+    const newCount = tapCount + 1;
+    setTapCount(newCount);
+    if (newCount >= 7) {
+      setShowTestButton(true);
+      Alert.alert('Developer Mode', 'Test profile creation enabled!');
+    }
+  };
+
+  const createTestProfile = async () => {
+    Alert.alert(
+      'Create Test Profile',
+      'This will create a comprehensive test account with sample data. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Create',
+          onPress: async () => {
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              const response = await fetch(
+                `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-test-profile`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session?.access_token || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+                  },
+                }
+              );
+
+              const result = await response.json();
+
+              if (result.success) {
+                Alert.alert(
+                  'Test Profile Created! 🎉',
+                  `Email: ${result.credentials.email}\nPassword: ${result.credentials.password}\n\nData Created:\n- ${result.data.services_count} Services\n- ${result.data.clients_count} Clients\n- ${result.data.invoices_count} Invoices\n- ${result.data.payments_count} Payments\n- ${result.data.bookings_count} Bookings`,
+                  [{ text: 'OK' }]
+                );
+              } else {
+                Alert.alert('Info', result.error || 'Test profile may already exist');
+              }
+            } catch (error) {
+              console.error('Error creating test profile:', error);
+              Alert.alert('Error', 'Failed to create test profile. Check console for details.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -49,11 +105,13 @@ export default function MoreScreen() {
 
       {/* Header */}
       <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
-        <Image
-          source={require('@/assets/images/4d3cae05-9ebb-4fdb-a402-bcee823fa1a2.png')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+        <TouchableOpacity onPress={handleLogoTap} activeOpacity={0.9}>
+          <Image
+            source={require('@/assets/images/4d3cae05-9ebb-4fdb-a402-bcee823fa1a2.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
         <Text style={styles.title}>More</Text>
       </Animated.View>
 
@@ -254,6 +312,27 @@ export default function MoreScreen() {
           </TouchableOpacity>
         </View>
       </Animated.View>
+
+      {/* Test Profile Button (Hidden Developer Feature) */}
+      {showTestButton && (
+        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [95, 0] }) }] }}>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Developer Tools</Text>
+            <TouchableOpacity onPress={createTestProfile}>
+              <GlassView style={[styles.settingItem, { borderColor: colors.primary + '40', borderWidth: 1 }]}>
+                <View style={styles.settingLeft}>
+                  <IconSymbol ios_icon_name="hammer.fill" android_material_icon_name="build" size={24} color={colors.primary} />
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>Create Test Profile</Text>
+                    <Text style={styles.settingDescription}>Generate demo account with sample data</Text>
+                  </View>
+                </View>
+                <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              </GlassView>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      )}
 
       {/* Logout */}
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) }] }}>
