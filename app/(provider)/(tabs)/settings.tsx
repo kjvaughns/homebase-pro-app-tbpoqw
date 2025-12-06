@@ -97,13 +97,13 @@ export default function SettingsScreen() {
           </GlassView>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/(provider)/settings/profile' as any)}>
+        <TouchableOpacity onPress={() => router.push('/(provider)/business-profile/index' as any)}>
           <GlassView style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <IconSymbol ios_icon_name="person.circle.fill" android_material_icon_name="account-circle" size={24} color={colors.primary} />
               <View style={styles.settingInfo}>
                 <Text style={styles.settingLabel}>Business Profile</Text>
-                <Text style={styles.settingDescription}>Edit business info and logo</Text>
+                <Text style={styles.settingDescription}>Edit marketplace profile and slug</Text>
               </View>
             </View>
             <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
@@ -111,13 +111,25 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Payment Settings */}
+      {/* Money & Billing */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Payments</Text>
+        <Text style={styles.sectionTitle}>Money & Billing</Text>
+        <TouchableOpacity onPress={() => router.push('/(provider)/money-home/index' as any)}>
+          <GlassView style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <IconSymbol ios_icon_name="dollarsign.circle.fill" android_material_icon_name="attach-money" size={24} color={colors.success} />
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Money</Text>
+                <Text style={styles.settingDescription}>Revenue, invoices & payments</Text>
+              </View>
+            </View>
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+          </GlassView>
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => router.push('/(provider)/settings/payment' as any)}>
           <GlassView style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="payment" size={24} color={colors.success} />
+              <IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="payment" size={24} color={colors.primary} />
               <View style={styles.settingInfo}>
                 <Text style={styles.settingLabel}>Payment Settings</Text>
                 <Text style={styles.settingDescription}>Stripe Connect & payouts</Text>
@@ -126,13 +138,30 @@ export default function SettingsScreen() {
             <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
           </GlassView>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.push('/(provider)/settings/billing' as any)}>
+        <TouchableOpacity onPress={() => router.push('/(provider)/billing/index' as any)}>
           <GlassView style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="receipt" size={24} color={colors.accent} />
               <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Billing Settings</Text>
+                <Text style={styles.settingLabel}>Billing</Text>
                 <Text style={styles.settingDescription}>Subscription & invoices</Text>
+              </View>
+            </View>
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+          </GlassView>
+        </TouchableOpacity>
+      </View>
+
+      {/* Integrations */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Integrations</Text>
+        <TouchableOpacity onPress={() => router.push('/(provider)/integrations/index' as any)}>
+          <GlassView style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <IconSymbol ios_icon_name="app.connected.to.app.below.fill" android_material_icon_name="extension" size={24} color={colors.accent} />
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Integrations</Text>
+                <Text style={styles.settingDescription}>Calendar, QuickBooks, Zapier</Text>
               </View>
             </View>
             <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
@@ -195,6 +224,23 @@ export default function SettingsScreen() {
             thumbColor={colors.text}
           />
         </GlassView>
+      </View>
+
+      {/* Support */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Support</Text>
+        <TouchableOpacity onPress={() => router.push('/(provider)/support/index' as any)}>
+          <GlassView style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <IconSymbol ios_icon_name="questionmark.circle.fill" android_material_icon_name="help" size={24} color={colors.accent} />
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Help & Support</Text>
+                <Text style={styles.settingDescription}>Get help from our team</Text>
+              </View>
+            </View>
+            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+          </GlassView>
+        </TouchableOpacity>
       </View>
 
       {/* Logout */}
