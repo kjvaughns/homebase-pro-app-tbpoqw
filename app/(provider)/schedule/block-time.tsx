@@ -7,7 +7,6 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -16,11 +15,13 @@ import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function BlockTimeScreen() {
   const router = useRouter();
   const { organization } = useAuth();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
@@ -51,12 +52,11 @@ export default function BlockTimeScreen() {
 
       if (error) throw error;
 
-      Alert.alert('Success', 'Time blocked successfully', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      showToast('Time blocked successfully', 'success');
+      router.back();
     } catch (error: any) {
       console.error('Error blocking time:', error);
-      Alert.alert('Error', error.message || 'Failed to block time');
+      showToast(error.message || 'Failed to block time', 'error');
     } finally {
       setLoading(false);
     }
@@ -68,9 +68,15 @@ export default function BlockTimeScreen() {
     return (endHour * 60 + endMin) - (startHour * 60 + startMin);
   };
 
+  const formatTime = (date: Date) => {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
   return (
     <View style={commonStyles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <IconSymbol
@@ -90,7 +96,7 @@ export default function BlockTimeScreen() {
               ios_icon_name="info.circle.fill"
               android_material_icon_name="info"
               size={24}
-              color={colors.accent}
+              color={colors.primary}
             />
             <Text style={styles.infoText}>
               Block time on your calendar to prevent bookings during specific periods
@@ -103,7 +109,12 @@ export default function BlockTimeScreen() {
             onPress={() => setShowDatePicker(true)}
           >
             <Text style={styles.inputText}>
-              {formData.scheduled_date.toLocaleDateString()}
+              {formData.scheduled_date.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}
             </Text>
           </TouchableOpacity>
           {showDatePicker && (
@@ -127,6 +138,17 @@ export default function BlockTimeScreen() {
               >
                 <Text style={styles.inputText}>{formData.scheduled_time}</Text>
               </TouchableOpacity>
+              {showStartTimePicker && (
+                <DateTimePicker
+                  value={new Date(`2000-01-01T${formData.scheduled_time}`)}
+                  mode="time"
+                  display="default"
+                  onChange={(event, date) => {
+                    setShowStartTimePicker(Platform.OS === 'ios');
+                    if (date) setFormData({ ...formData, scheduled_time: formatTime(date) });
+                  }}
+                />
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>End Time *</Text>
@@ -136,6 +158,17 @@ export default function BlockTimeScreen() {
               >
                 <Text style={styles.inputText}>{formData.end_time}</Text>
               </TouchableOpacity>
+              {showEndTimePicker && (
+                <DateTimePicker
+                  value={new Date(`2000-01-01T${formData.end_time}`)}
+                  mode="time"
+                  display="default"
+                  onChange={(event, date) => {
+                    setShowEndTimePicker(Platform.OS === 'ios');
+                    if (date) setFormData({ ...formData, end_time: formatTime(date) });
+                  }}
+                />
+              )}
             </View>
           </View>
 
@@ -169,7 +202,7 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   header: {
     flexDirection: 'row',
@@ -184,10 +217,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.glass,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
   },
   title: {
     fontSize: 24,
-    fontWeight: '800',
+    fontWeight: '600',
     color: colors.text,
   },
   form: {
@@ -197,7 +232,7 @@ const styles = StyleSheet.create({
   infoBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.accent + '20',
+    backgroundColor: colors.primary + '20',
     padding: 12,
     borderRadius: 12,
     gap: 12,

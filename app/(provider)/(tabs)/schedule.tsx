@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
@@ -9,14 +9,14 @@ import { Booking } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
-type ViewMode = 'day' | 'week' | 'month' | 'list' | 'map';
+type ViewMode = 'list' | 'day' | 'week' | 'month';
 
 const { width } = Dimensions.get('window');
 
 export default function ScheduleScreen() {
   const router = useRouter();
   const { organization } = useAuth();
-  const [viewMode, setViewMode] = useState<ViewMode>('day');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
@@ -56,9 +56,12 @@ export default function ScheduleScreen() {
       const day = date.getDay();
       date.setDate(date.getDate() - day);
       return date.toISOString().split('T')[0];
-    } else {
+    } else if (viewMode === 'month') {
       date.setDate(1);
       return date.toISOString().split('T')[0];
+    } else {
+      // List view - show upcoming jobs from today
+      return new Date().toISOString().split('T')[0];
     }
   };
 
@@ -70,10 +73,15 @@ export default function ScheduleScreen() {
       const day = date.getDay();
       date.setDate(date.getDate() + (6 - day));
       return date.toISOString().split('T')[0];
-    } else {
+    } else if (viewMode === 'month') {
       date.setMonth(date.getMonth() + 1);
       date.setDate(0);
       return date.toISOString().split('T')[0];
+    } else {
+      // List view - show next 30 days
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + 30);
+      return endDate.toISOString().split('T')[0];
     }
   };
 
@@ -109,10 +117,23 @@ export default function ScheduleScreen() {
     setSelectedDate(newDate);
   };
 
+  const goToToday = () => {
+    setSelectedDate(new Date());
+  };
+
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.toDateString() === today.toDateString();
+  };
+
+  const isSameDay = (date1: Date, date2: Date) => {
+    return date1.toDateString() === date2.toDateString();
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return colors.warning;
-      case 'confirmed': return colors.accent;
+      case 'confirmed': return colors.primary;
       case 'in_progress': return colors.primary;
       case 'completed': return colors.success;
       case 'cancelled': return colors.error;
@@ -121,39 +142,69 @@ export default function ScheduleScreen() {
     }
   };
 
-  const optimizeRoute = async () => {
-    const todayBookings = bookings.filter(b => 
-      b.scheduled_date === new Date().toISOString().split('T')[0] && 
-      b.status !== 'cancelled' &&
-      b.status !== 'blocked'
+  const renderListView = () => {
+    const upcomingBookings = bookings.filter(b => b.status !== 'cancelled' && b.status !== 'blocked');
+
+    return (
+      <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
+        {upcomingBookings.length > 0 ? (
+          upcomingBookings.map((booking, index) => (
+            <TouchableOpacity 
+              key={index}
+              onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
+            >
+              <GlassView style={styles.jobCard}>
+                <View style={styles.jobHeader}>
+                  <View style={styles.dateTimeContainer}>
+                    <Text style={styles.jobDate}>
+                      {new Date(booking.scheduled_date).toLocaleDateString('en-US', { 
+                        weekday: 'short', 
+                        month: 'short', 
+                        day: 'numeric' 
+                      })}
+                    </Text>
+                    <View style={styles.timeContainer}>
+                      <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={16} color={colors.primary} />
+                      <Text style={styles.jobTime}>{booking.scheduled_time}</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(booking.status) + '20' }]}>
+                    <Text style={[styles.statusText, { color: getStatusColor(booking.status) }]}>
+                      {booking.status.replace('_', ' ')}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.jobService}>{booking.service_name}</Text>
+                <View style={styles.jobDetails}>
+                  <View style={styles.jobDetail}>
+                    <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={16} color={colors.textSecondary} />
+                    <Text style={styles.jobDetailText}>{booking.clients?.name || 'Unknown'}</Text>
+                  </View>
+                  <View style={styles.jobDetail}>
+                    <IconSymbol ios_icon_name="location.fill" android_material_icon_name="location-on" size={16} color={colors.textSecondary} />
+                    <Text style={styles.jobDetailText} numberOfLines={1}>{booking.address}</Text>
+                  </View>
+                </View>
+                {booking.price && (
+                  <Text style={styles.jobPrice}>${booking.price}</Text>
+                )}
+              </GlassView>
+            </TouchableOpacity>
+          ))
+        ) : (
+          <GlassView style={styles.emptyState}>
+            <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={64} color={colors.textSecondary} />
+            <Text style={styles.emptyText}>No upcoming jobs</Text>
+            <TouchableOpacity 
+              style={styles.emptyButton}
+              onPress={() => router.push('/(provider)/schedule/create-job')}
+            >
+              <Text style={styles.emptyButtonText}>Create Job</Text>
+            </TouchableOpacity>
+          </GlassView>
+        )}
+      </ScrollView>
     );
-
-    if (todayBookings.length < 2) {
-      Alert.alert('Route Optimization', 'Need at least 2 jobs to optimize route');
-      return;
-    }
-
-    // Simple nearest neighbor algorithm
-    // In production, you'd use Google Maps Distance Matrix API
-    const optimized = [...todayBookings];
-    for (let i = 0; i < optimized.length - 1; i++) {
-      optimized[i].route_order = i + 1;
-    }
-
-    try {
-      for (const booking of optimized) {
-        await supabase
-          .from('bookings')
-          .update({ route_order: booking.route_order })
-          .eq('id', booking.id);
-      }
-      
-      Alert.alert('Success', 'Route optimized successfully!');
-      loadBookings();
-    } catch (error) {
-      console.error('Error optimizing route:', error);
-      Alert.alert('Error', 'Failed to optimize route');
-    }
   };
 
   const renderDayView = () => {
@@ -163,34 +214,42 @@ export default function ScheduleScreen() {
     );
 
     return (
-      <ScrollView style={styles.calendarContainer}>
-        {hours.map((hour) => {
-          const hourBookings = todayBookings.filter(b => {
-            const bookingHour = parseInt(b.scheduled_time.split(':')[0]);
-            return bookingHour === hour;
-          });
+      <React.Fragment>
+        {isToday(selectedDate) && (
+          <View style={styles.todayBadge}>
+            <Text style={styles.todayBadgeText}>Today</Text>
+          </View>
+        )}
+        <ScrollView style={styles.calendarContainer} showsVerticalScrollIndicator={false}>
+          {hours.map((hour) => {
+            const hourBookings = todayBookings.filter(b => {
+              const bookingHour = parseInt(b.scheduled_time.split(':')[0]);
+              return bookingHour === hour;
+            });
 
-          return (
-            <View key={hour} style={styles.hourRow}>
-              <Text style={styles.hourLabel}>{hour > 12 ? `${hour - 12}:00 PM` : `${hour}:00 AM`}</Text>
-              <View style={styles.hourContent}>
-                {hourBookings.map((booking, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
-                  >
-                    <GlassView style={[styles.bookingBlock, { borderLeftColor: getStatusColor(booking.status) }]}>
-                      <Text style={styles.bookingTime}>{booking.scheduled_time}</Text>
-                      <Text style={styles.bookingService}>{booking.service_name}</Text>
-                      <Text style={styles.bookingClient}>{booking.clients?.name || 'Unknown'}</Text>
-                    </GlassView>
-                  </TouchableOpacity>
-                ))}
+            return (
+              <View key={hour} style={styles.hourRow}>
+                <Text style={styles.hourLabel}>{hour > 12 ? `${hour - 12}:00 PM` : `${hour}:00 AM`}</Text>
+                <View style={styles.hourContent}>
+                  <View style={styles.hourLine} />
+                  {hourBookings.map((booking, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
+                    >
+                      <GlassView style={[styles.bookingBlock, { borderLeftColor: getStatusColor(booking.status) }]}>
+                        <Text style={styles.bookingTime}>{booking.scheduled_time}</Text>
+                        <Text style={styles.bookingService}>{booking.service_name}</Text>
+                        <Text style={styles.bookingClient}>{booking.clients?.name || 'Unknown'}</Text>
+                      </GlassView>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
-          );
-        })}
-      </ScrollView>
+            );
+          })}
+        </ScrollView>
+      </React.Fragment>
     );
   };
 
@@ -205,32 +264,87 @@ export default function ScheduleScreen() {
       return date;
     });
 
-    return (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weekContainer}>
-        {days.map((date, index) => {
-          const dateStr = date.toISOString().split('T')[0];
-          const dayBookings = bookings.filter(b => b.scheduled_date === dateStr);
+    const today = new Date();
 
-          return (
-            <View key={index} style={styles.dayColumn}>
-              <Text style={styles.dayHeader}>{date.toLocaleDateString('en-US', { weekday: 'short' })}</Text>
-              <Text style={styles.dayDate}>{date.getDate()}</Text>
-              <ScrollView style={styles.dayBookings}>
-                {dayBookings.map((booking, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
-                  >
-                    <View style={[styles.weekBooking, { backgroundColor: getStatusColor(booking.status) + '30' }]}>
-                      <Text style={styles.weekBookingTime}>{booking.scheduled_time}</Text>
-                      <Text style={styles.weekBookingService} numberOfLines={1}>{booking.service_name}</Text>
+    return (
+      <ScrollView style={styles.weekContainer} showsVerticalScrollIndicator={false}>
+        <View style={styles.weekDaysRow}>
+          {days.map((date, index) => {
+            const dateStr = date.toISOString().split('T')[0];
+            const dayBookings = bookings.filter(b => b.scheduled_date === dateStr);
+            const isTodayDate = isToday(date);
+            const isSelected = isSameDay(date, selectedDate);
+
+            return (
+              <TouchableOpacity
+                key={index}
+                style={styles.weekDayColumn}
+                onPress={() => {
+                  setSelectedDate(date);
+                  setViewMode('day');
+                }}
+              >
+                <Text style={styles.weekDayName}>
+                  {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                </Text>
+                <View style={styles.weekDateContainer}>
+                  {isTodayDate && (
+                    <View style={styles.todayCircle}>
+                      <Text style={styles.weekDateToday}>{date.getDate()}</Text>
                     </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          );
-        })}
+                  )}
+                  {!isTodayDate && isSelected && (
+                    <View style={styles.selectedCircle}>
+                      <Text style={styles.weekDateSelected}>{date.getDate()}</Text>
+                    </View>
+                  )}
+                  {!isTodayDate && !isSelected && (
+                    <Text style={styles.weekDate}>{date.getDate()}</Text>
+                  )}
+                </View>
+                <View style={styles.weekBookingsList}>
+                  {dayBookings.slice(0, 3).map((booking, idx) => (
+                    <View
+                      key={idx}
+                      style={[styles.weekBookingDot, { backgroundColor: getStatusColor(booking.status) }]}
+                    />
+                  ))}
+                  {dayBookings.length > 3 && (
+                    <Text style={styles.weekBookingMore}>+{dayBookings.length - 3}</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        
+        {/* Show selected day's jobs */}
+        <View style={styles.weekJobsList}>
+          <Text style={styles.weekJobsTitle}>
+            {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </Text>
+          {bookings
+            .filter(b => b.scheduled_date === selectedDate.toISOString().split('T')[0])
+            .map((booking, index) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
+              >
+                <GlassView style={styles.weekJobCard}>
+                  <View style={styles.weekJobHeader}>
+                    <Text style={styles.weekJobTime}>{booking.scheduled_time}</Text>
+                    <View style={[styles.weekJobStatus, { backgroundColor: getStatusColor(booking.status) + '20' }]}>
+                      <Text style={[styles.weekJobStatusText, { color: getStatusColor(booking.status) }]}>
+                        {booking.status}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.weekJobService}>{booking.service_name}</Text>
+                  <Text style={styles.weekJobClient}>{booking.clients?.name || 'Unknown'}</Text>
+                </GlassView>
+              </TouchableOpacity>
+            ))}
+        </View>
       </ScrollView>
     );
   };
@@ -249,8 +363,10 @@ export default function ScheduleScreen() {
       days.push(i);
     }
 
+    const today = new Date();
+
     return (
-      <View style={styles.monthContainer}>
+      <ScrollView style={styles.monthContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.weekDaysHeader}>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
             <Text key={index} style={styles.weekDayLabel}>{day}</Text>
@@ -265,6 +381,10 @@ export default function ScheduleScreen() {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const dayBookings = bookings.filter(b => b.scheduled_date === dateStr);
             const hasBookings = dayBookings.length > 0;
+            
+            const cellDate = new Date(year, month, day);
+            const isTodayDate = isToday(cellDate);
+            const isSelected = isSameDay(cellDate, selectedDate);
 
             return (
               <TouchableOpacity
@@ -276,151 +396,73 @@ export default function ScheduleScreen() {
                   setViewMode('day');
                 }}
               >
-                <Text style={styles.monthDayNumber}>{day}</Text>
-                {hasBookings && (
-                  <View style={styles.monthDayDot}>
-                    <Text style={styles.monthDayDotText}>{dayBookings.length}</Text>
-                  </View>
-                )}
+                <View style={styles.monthDayContent}>
+                  {isTodayDate && (
+                    <View style={styles.monthTodayCircle}>
+                      <Text style={styles.monthDayNumberToday}>{day}</Text>
+                    </View>
+                  )}
+                  {!isTodayDate && isSelected && (
+                    <View style={styles.monthSelectedCircle}>
+                      <Text style={styles.monthDayNumberSelected}>{day}</Text>
+                    </View>
+                  )}
+                  {!isTodayDate && !isSelected && (
+                    <Text style={styles.monthDayNumber}>{day}</Text>
+                  )}
+                  {hasBookings && (
+                    <View style={styles.monthDayDots}>
+                      {dayBookings.slice(0, 3).map((_, idx) => (
+                        <View key={idx} style={styles.monthDayDot} />
+                      ))}
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
             );
           })}
         </View>
-      </View>
-    );
-  };
-
-  const renderListView = () => {
-    return (
-      <ScrollView style={styles.listContainer}>
-        {bookings.length > 0 ? (
-          bookings.map((booking, index) => (
-            <TouchableOpacity 
-              key={index}
-              onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
-            >
-              <GlassView style={styles.jobCard}>
-                <View style={styles.jobHeader}>
-                  <View style={styles.timeContainer}>
-                    <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={20} color={colors.primary} />
-                    <Text style={styles.jobTime}>{booking.scheduled_time}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(booking.status) + '20' }]}>
-                    <Text style={[styles.statusText, { color: getStatusColor(booking.status) }]}>
-                      {booking.status.replace('_', ' ')}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.jobService}>{booking.service_name}</Text>
-                <View style={styles.jobDetails}>
-                  <View style={styles.jobDetail}>
-                    <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={16} color={colors.textSecondary} />
-                    <Text style={styles.jobDetailText}>{booking.clients?.name || 'Unknown'}</Text>
-                  </View>
-                  <View style={styles.jobDetail}>
-                    <IconSymbol ios_icon_name="location.fill" android_material_icon_name="location-on" size={16} color={colors.textSecondary} />
-                    <Text style={styles.jobDetailText}>{booking.address}</Text>
-                  </View>
-                  {booking.duration && (
-                    <View style={styles.jobDetail}>
-                      <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={16} color={colors.textSecondary} />
-                      <Text style={styles.jobDetailText}>{booking.duration} min</Text>
-                    </View>
-                  )}
-                </View>
-                {booking.price && (
-                  <Text style={styles.jobPrice}>${booking.price}</Text>
-                )}
-              </GlassView>
-            </TouchableOpacity>
-          ))
-        ) : (
-          <GlassView style={styles.emptyState}>
-            <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={64} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>No jobs scheduled</Text>
-            <TouchableOpacity 
-              style={styles.emptyButton}
-              onPress={() => router.push('/(provider)/schedule/create-job')}
-            >
-              <Text style={styles.emptyButtonText}>Create Your First Job</Text>
-            </TouchableOpacity>
-          </GlassView>
-        )}
       </ScrollView>
-    );
-  };
-
-  const renderMapView = () => {
-    return (
-      <View style={styles.mapContainer}>
-        <GlassView style={styles.mapPlaceholder}>
-          <IconSymbol ios_icon_name="map" android_material_icon_name="map" size={64} color={colors.textSecondary} />
-          <Text style={styles.mapPlaceholderText}>
-            Map view is not supported in Natively at this time.
-          </Text>
-          <Text style={styles.mapPlaceholderSubtext}>
-            react-native-maps is not currently available in this environment.
-          </Text>
-          <TouchableOpacity 
-            style={styles.optimizeButton}
-            onPress={optimizeRoute}
-          >
-            <IconSymbol ios_icon_name="arrow.triangle.2.circlepath" android_material_icon_name="sync" size={20} color={colors.text} />
-            <Text style={styles.optimizeButtonText}>Optimize Route</Text>
-          </TouchableOpacity>
-        </GlassView>
-      </View>
     );
   };
 
   return (
     <View style={commonStyles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView 
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <Text style={styles.title}>Schedule</Text>
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={() => router.push('/(provider)/schedule/create-job')}
-          >
-            <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={24} color={colors.text} />
-          </TouchableOpacity>
         </View>
 
         {/* View Mode Selector */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.viewModeScroll}>
-          <View style={styles.viewModeContainer}>
-            <TouchableOpacity 
-              style={[styles.viewModeButton, viewMode === 'day' && styles.viewModeButtonActive]}
-              onPress={() => setViewMode('day')}
-            >
-              <Text style={[styles.viewModeText, viewMode === 'day' && styles.viewModeTextActive]}>Day</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.viewModeButton, viewMode === 'week' && styles.viewModeButtonActive]}
-              onPress={() => setViewMode('week')}
-            >
-              <Text style={[styles.viewModeText, viewMode === 'week' && styles.viewModeTextActive]}>Week</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.viewModeButton, viewMode === 'month' && styles.viewModeButtonActive]}
-              onPress={() => setViewMode('month')}
-            >
-              <Text style={[styles.viewModeText, viewMode === 'month' && styles.viewModeTextActive]}>Month</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.viewModeButton, viewMode === 'list' && styles.viewModeButtonActive]}
-              onPress={() => setViewMode('list')}
-            >
-              <Text style={[styles.viewModeText, viewMode === 'list' && styles.viewModeTextActive]}>List</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.viewModeButton, viewMode === 'map' && styles.viewModeButtonActive]}
-              onPress={() => setViewMode('map')}
-            >
-              <Text style={[styles.viewModeText, viewMode === 'map' && styles.viewModeTextActive]}>Map</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
+        <View style={styles.viewModeContainer}>
+          <TouchableOpacity 
+            style={[styles.viewModeButton, viewMode === 'list' && styles.viewModeButtonActive]}
+            onPress={() => setViewMode('list')}
+          >
+            <Text style={[styles.viewModeText, viewMode === 'list' && styles.viewModeTextActive]}>List</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.viewModeButton, viewMode === 'day' && styles.viewModeButtonActive]}
+            onPress={() => setViewMode('day')}
+          >
+            <Text style={[styles.viewModeText, viewMode === 'day' && styles.viewModeTextActive]}>Day</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.viewModeButton, viewMode === 'week' && styles.viewModeButtonActive]}
+            onPress={() => setViewMode('week')}
+          >
+            <Text style={[styles.viewModeText, viewMode === 'week' && styles.viewModeTextActive]}>Week</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.viewModeButton, viewMode === 'month' && styles.viewModeButtonActive]}
+            onPress={() => setViewMode('month')}
+          >
+            <Text style={[styles.viewModeText, viewMode === 'month' && styles.viewModeTextActive]}>Month</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Date Navigation */}
         {viewMode !== 'list' && (
@@ -428,7 +470,7 @@ export default function ScheduleScreen() {
             <TouchableOpacity style={styles.navButton} onPress={() => navigateDate('prev')}>
               <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron-left" size={24} color={colors.text} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setSelectedDate(new Date())}>
+            <TouchableOpacity onPress={goToToday}>
               <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.navButton} onPress={() => navigateDate('next')}>
@@ -438,11 +480,10 @@ export default function ScheduleScreen() {
         )}
 
         {/* Calendar Views */}
+        {viewMode === 'list' && renderListView()}
         {viewMode === 'day' && renderDayView()}
         {viewMode === 'week' && renderWeekView()}
         {viewMode === 'month' && renderMonthView()}
-        {viewMode === 'list' && renderListView()}
-        {viewMode === 'map' && renderMapView()}
 
         {/* Quick Actions */}
         <View style={styles.quickActions}>
@@ -450,14 +491,14 @@ export default function ScheduleScreen() {
             style={styles.quickActionButton}
             onPress={() => router.push('/(provider)/schedule/block-time')}
           >
-            <IconSymbol ios_icon_name="xmark.circle" android_material_icon_name="block" size={20} color={colors.text} />
+            <IconSymbol ios_icon_name="xmark.circle" android_material_icon_name="block" size={18} color={colors.text} />
             <Text style={styles.quickActionText}>Block Time</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.quickActionButton}
-            onPress={() => Alert.alert('Google Calendar', 'OAuth integration coming soon!')}
+            onPress={() => console.log('Sync Calendar - Coming soon')}
           >
-            <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={20} color={colors.text} />
+            <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={18} color={colors.text} />
             <Text style={styles.quickActionText}>Sync Calendar</Text>
           </TouchableOpacity>
         </View>
@@ -470,39 +511,29 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
+    fontSize: 28,
+    fontWeight: '600',
     color: colors.text,
-  },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewModeScroll: {
-    marginBottom: 20,
   },
   viewModeContainer: {
     flexDirection: 'row',
     backgroundColor: colors.glass,
     borderRadius: 12,
     padding: 4,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
   },
   viewModeButton: {
+    flex: 1,
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     alignItems: 'center',
     borderRadius: 8,
   },
@@ -530,141 +561,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.glass,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
   },
   dateText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
   },
-  calendarContainer: {
-    marginBottom: 20,
-  },
-  hourRow: {
-    flexDirection: 'row',
-    minHeight: 60,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.glassBorder,
-  },
-  hourLabel: {
-    width: 70,
-    fontSize: 12,
-    color: colors.textSecondary,
-    paddingTop: 4,
-  },
-  hourContent: {
-    flex: 1,
-    paddingLeft: 8,
-  },
-  bookingBlock: {
-    padding: 8,
-    marginBottom: 4,
-    borderLeftWidth: 4,
-  },
-  bookingTime: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.primary,
-    marginBottom: 2,
-  },
-  bookingService: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  bookingClient: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  weekContainer: {
-    marginBottom: 20,
-  },
-  dayColumn: {
-    width: (width - 40) / 4,
-    marginRight: 8,
-  },
-  dayHeader: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  dayDate: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  dayBookings: {
-    maxHeight: 400,
-  },
-  weekBooking: {
-    padding: 8,
-    borderRadius: 8,
-    marginBottom: 4,
-  },
-  weekBookingTime: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  weekBookingService: {
-    fontSize: 11,
-    color: colors.text,
-  },
-  monthContainer: {
-    marginBottom: 20,
-  },
-  weekDaysHeader: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  weekDayLabel: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  monthGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  emptyDay: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1,
-  },
-  monthDay: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1,
-    padding: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-  },
-  monthDayNumber: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  monthDayDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  monthDayDotText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.text,
-  },
+  
+  // List View
   listContainer: {
     marginBottom: 20,
   },
@@ -675,13 +581,22 @@ const styles = StyleSheet.create({
   jobHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
+  },
+  dateTimeContainer: {
+    flex: 1,
+  },
+  jobDate: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 4,
   },
   timeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   jobTime: {
     fontSize: 16,
@@ -716,46 +631,12 @@ const styles = StyleSheet.create({
   jobDetailText: {
     fontSize: 14,
     color: colors.textSecondary,
+    flex: 1,
   },
   jobPrice: {
     fontSize: 20,
     fontWeight: '800',
     color: colors.primary,
-  },
-  mapContainer: {
-    marginBottom: 20,
-  },
-  mapPlaceholder: {
-    padding: 48,
-    alignItems: 'center',
-  },
-  mapPlaceholderText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    textAlign: 'center',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  mapPlaceholderSubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  optimizeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  optimizeButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
   },
   emptyState: {
     padding: 48,
@@ -778,9 +659,274 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
+
+  // Day View
+  todayBadge: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    marginBottom: 16,
+  },
+  todayBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  calendarContainer: {
+    marginBottom: 20,
+  },
+  hourRow: {
+    flexDirection: 'row',
+    minHeight: 60,
+  },
+  hourLabel: {
+    width: 70,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    paddingTop: 4,
+  },
+  hourContent: {
+    flex: 1,
+    paddingLeft: 8,
+    position: 'relative',
+  },
+  hourLine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  bookingBlock: {
+    padding: 12,
+    marginBottom: 8,
+    marginTop: 4,
+    borderLeftWidth: 4,
+  },
+  bookingTime: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+    marginBottom: 4,
+  },
+  bookingService: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  bookingClient: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+
+  // Week View
+  weekContainer: {
+    marginBottom: 20,
+  },
+  weekDaysRow: {
+    flexDirection: 'row',
+    marginBottom: 24,
+    gap: 8,
+  },
+  weekDayColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  weekDayName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  weekDateContainer: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  todayCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekDateToday: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  selectedCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: colors.text,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekDateSelected: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  weekDate: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  weekBookingsList: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 20,
+  },
+  weekBookingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  weekBookingMore: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  weekJobsList: {
+    gap: 12,
+  },
+  weekJobsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  weekJobCard: {
+    padding: 12,
+  },
+  weekJobHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  weekJobTime: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  weekJobStatus: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  weekJobStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  weekJobService: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  weekJobClient: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+
+  // Month View
+  monthContainer: {
+    marginBottom: 20,
+  },
+  weekDaysHeader: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  weekDayLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  emptyDay: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+  },
+  monthDay: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    padding: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthDayContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+  },
+  monthTodayCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthDayNumberToday: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  monthSelectedCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: colors.text,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthDayNumberSelected: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  monthDayNumber: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  monthDayDots: {
+    flexDirection: 'row',
+    gap: 2,
+    marginTop: 4,
+  },
+  monthDayDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
+  },
+
+  // Quick Actions
   quickActions: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 20,
   },
   quickActionButton: {
     flex: 1,
@@ -788,12 +934,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.glass,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 12,
     gap: 8,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
   },
   quickActionText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.text,
   },
