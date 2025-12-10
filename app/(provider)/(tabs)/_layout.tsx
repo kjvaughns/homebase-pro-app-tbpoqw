@@ -10,13 +10,13 @@ export default function ProviderTabLayout() {
       name: 'index',
       route: '/(provider)/(tabs)/',
       icon: 'home',
-      label: 'Home',
+      label: 'Dashboard',
     },
     {
       name: 'schedule',
       route: '/(provider)/(tabs)/schedule',
       icon: 'calendar-today',
-      label: 'Schedule',
+      label: 'Calendar',
     },
     {
       name: 'clients',
@@ -27,8 +27,8 @@ export default function ProviderTabLayout() {
     {
       name: 'settings',
       route: '/(provider)/(tabs)/settings',
-      icon: 'more-horiz',
-      label: 'More',
+      icon: 'settings',
+      label: 'Settings',
     },
   ];
 
