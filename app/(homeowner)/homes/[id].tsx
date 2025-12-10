@@ -1,25 +1,27 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
+import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
-import { GlassView } from '@/components/GlassView';
 
 interface Home {
   id: string;
   address: string;
   city: string;
   state: string;
-  zip: string;
+  zip_code: string;
   property_type: string;
-  nickname?: string;
-  is_primary: boolean;
-  created_at: string;
+  square_footage?: number;
+  year_built?: number;
+  bedrooms?: number;
+  bathrooms?: number;
 }
 
-export default function HomeDetailScreen() {
+export default function HomeDetailsScreen() {
+  const router = useRouter();
   const { id } = useLocalSearchParams();
   const [home, setHome] = useState<Home | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,7 +36,7 @@ export default function HomeDetailScreen() {
 
       if (error) throw error;
       setHome(data);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error fetching home:', error);
       Alert.alert('Error', 'Failed to load home details');
     } finally {
@@ -46,10 +48,40 @@ export default function HomeDetailScreen() {
     fetchHome();
   }, [fetchHome]);
 
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Home',
+      'Are you sure you want to delete this home?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('homes')
+                .delete()
+                .eq('id', id);
+
+              if (error) throw error;
+
+              Alert.alert('Success', 'Home deleted successfully');
+              router.back();
+            } catch (error) {
+              console.error('Error deleting home:', error);
+              Alert.alert('Error', 'Failed to delete home');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={[commonStyles.container, styles.centered]}>
-        <Text style={styles.loadingText}>Loading...</Text>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -63,203 +95,158 @@ export default function HomeDetailScreen() {
   }
 
   return (
-    <View style={commonStyles.container}>
+    <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow-back"
-            size={24}
-            color={colors.text}
-          />
+          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron-left" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Home Details</Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <GlassView style={styles.card}>
-          <View style={styles.iconContainer}>
-            <IconSymbol
-              ios_icon_name="house.fill"
-              android_material_icon_name="home"
-              size={48}
-              color={colors.primary}
-            />
-          </View>
-
-          {home.nickname && (
-            <Text style={styles.nickname}>{home.nickname}</Text>
-          )}
-
+      <GlassView style={styles.card}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Address</Text>
           <Text style={styles.address}>{home.address}</Text>
-          <Text style={styles.city}>
-            {home.city}, {home.state} {home.zip}
+          <Text style={styles.cityState}>
+            {home.city}, {home.state} {home.zip_code}
           </Text>
+        </View>
 
+        <View style={styles.divider} />
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Property Details</Text>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Property Type</Text>
+            <Text style={styles.detailLabel}>Type:</Text>
             <Text style={styles.detailValue}>{home.property_type}</Text>
           </View>
-
-          {home.is_primary && (
-            <View style={styles.primaryBadge}>
-              <IconSymbol
-                ios_icon_name="star.fill"
-                android_material_icon_name="star"
-                size={16}
-                color={colors.primary}
-              />
-              <Text style={styles.primaryText}>Primary Home</Text>
+          {home.square_footage && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Square Footage:</Text>
+              <Text style={styles.detailValue}>{home.square_footage.toLocaleString()} sq ft</Text>
             </View>
           )}
-        </GlassView>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Service History</Text>
-          <GlassView style={styles.emptyCard}>
-            <IconSymbol
-              ios_icon_name="calendar"
-              android_material_icon_name="event"
-              size={32}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.emptyText}>No service history yet</Text>
-          </GlassView>
+          {home.year_built && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Year Built:</Text>
+              <Text style={styles.detailValue}>{home.year_built}</Text>
+            </View>
+          )}
+          {home.bedrooms && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Bedrooms:</Text>
+              <Text style={styles.detailValue}>{home.bedrooms}</Text>
+            </View>
+          )}
+          {home.bathrooms && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Bathrooms:</Text>
+              <Text style={styles.detailValue}>{home.bathrooms}</Text>
+            </View>
+          )}
         </View>
+      </GlassView>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Maintenance Schedule</Text>
-          <GlassView style={styles.emptyCard}>
-            <IconSymbol
-              ios_icon_name="wrench.and.screwdriver"
-              android_material_icon_name="build"
-              size={32}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.emptyText}>No maintenance scheduled</Text>
-          </GlassView>
-        </View>
-      </ScrollView>
-    </View>
+      <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+        <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={20} color={colors.error} />
+        <Text style={styles.deleteButtonText}>Delete Home</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    padding: 20,
+    paddingTop: 60,
+    paddingBottom: 100,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-  },
-  backButton: {
-    padding: 8,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  content: {
-    padding: 20,
-    paddingBottom: 100,
-  },
-  centered: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  errorText: {
-    fontSize: 16,
-    color: colors.error,
-  },
-  card: {
-    padding: 24,
-    alignItems: 'center',
     marginBottom: 24,
   },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.glass,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
   },
-  nickname: {
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  card: {
+    padding: 20,
+    marginBottom: 20,
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  address: {
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  address: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
     marginBottom: 4,
-    textAlign: 'center',
   },
-  city: {
+  cityState: {
     fontSize: 16,
     color: colors.textSecondary,
-    marginBottom: 16,
-    textAlign: 'center',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 20,
   },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '100%',
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.glassBorder,
+    marginBottom: 12,
   },
   detailLabel: {
-    fontSize: 14,
+    fontSize: 16,
     color: colors.textSecondary,
   },
   detailValue: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
   },
-  primaryBadge: {
+  deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.primary + '30',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginTop: 12,
+    justifyContent: 'center',
+    backgroundColor: colors.glass,
+    paddingVertical: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.error + '40',
+    gap: 8,
   },
-  primaryText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
+  deleteButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.error,
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  emptyCard: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
+  errorText: {
+    fontSize: 16,
     color: colors.textSecondary,
-    marginTop: 12,
   },
 });

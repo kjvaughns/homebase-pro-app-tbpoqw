@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { User, UserRole, Profile, Organization } from '@/types';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Session } from '@supabase/supabase-js';
@@ -33,42 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    console.log('AuthContext: Initializing...');
-    
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('AuthContext: Initial session:', session?.user?.id || 'none');
-      setSession(session);
-      if (session?.user) {
-        loadUserData(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('AuthContext: Auth state changed:', event, session?.user?.id || 'none');
-      setSession(session);
-      
-      if (session?.user) {
-        await loadUserData(session.user.id);
-      } else {
-        setUser(null);
-        setProfile(null);
-        setOrganization(null);
-        setLoading(false);
-      }
-    });
-
-    return () => {
-      console.log('AuthContext: Cleaning up subscription');
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const loadUserData = async (userId: string, retries = 3) => {
+  const loadUserData = useCallback(async (userId: string, retries = 3) => {
     try {
       console.log('AuthContext: Loading user data for:', userId);
       
@@ -157,7 +122,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    console.log('AuthContext: Initializing...');
+    
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('AuthContext: Initial session:', session?.user?.id || 'none');
+      setSession(session);
+      if (session?.user) {
+        loadUserData(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('AuthContext: Auth state changed:', event, session?.user?.id || 'none');
+      setSession(session);
+      
+      if (session?.user) {
+        await loadUserData(session.user.id);
+      } else {
+        setUser(null);
+        setProfile(null);
+        setOrganization(null);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      console.log('AuthContext: Cleaning up subscription');
+      subscription.unsubscribe();
+    };
+  }, [loadUserData]);
 
   const login = async (email: string, password: string) => {
     try {
@@ -678,12 +678,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     console.log('AuthContext: Refreshing profile...');
     if (session?.user) {
       await loadUserData(session.user.id);
     }
-  };
+  }, [session, loadUserData]);
 
   return (
     <AuthContext.Provider

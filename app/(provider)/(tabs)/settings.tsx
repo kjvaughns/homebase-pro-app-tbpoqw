@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Animated, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
@@ -14,15 +14,15 @@ export default function MoreScreen() {
   const { user, profile, organization, logout } = useAuth();
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const fadeAnim = useState(new Animated.Value(0))[0];
+  const [fadeAnim] = useState(new Animated.Value(0));
 
-  React.useEffect(() => {
+  useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [fadeAnim]);
 
   const [tapCount, setTapCount] = useState(0);
   const [showTestButton, setShowTestButton] = useState(false);

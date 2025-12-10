@@ -1,207 +1,164 @@
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
-import { BlurView } from 'expo-blur';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 
 interface AccountSwitcherDropdownProps {
   visible: boolean;
   onClose: () => void;
-  anchorPosition?: { x: number; y: number };
 }
 
-export function AccountSwitcherDropdown({ visible, onClose, anchorPosition }: AccountSwitcherDropdownProps) {
-  const { profile, session, switchProfile } = useAuth();
-  const [switching, setSwitching] = useState(false);
+export function AccountSwitcherDropdown({ visible, onClose }: AccountSwitcherDropdownProps) {
+  const { profile, switchProfile } = useAuth();
   const [hasHomeownerProfile, setHasHomeownerProfile] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [hasProviderProfile, setHasProviderProfile] = useState(false);
+  const fadeAnim = useState(new Animated.Value(0))[0];
+
+  const checkHomeownerProfile = useCallback(async () => {
+    if (!profile) return;
+    
+    const { data } = await supabase
+      .from('homes')
+      .select('id')
+      .eq('homeowner_id', profile.id)
+      .limit(1);
+    
+    setHasHomeownerProfile((data && data.length > 0) || profile.role === 'homeowner');
+  }, [profile]);
+
+  const checkProviderProfile = useCallback(async () => {
+    if (!profile) return;
+    
+    const { data } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('owner_id', profile.id)
+      .limit(1);
+    
+    setHasProviderProfile((data && data.length > 0) || profile.role === 'provider');
+  }, [profile]);
 
   useEffect(() => {
-    if (visible && session?.user) {
+    if (visible) {
       checkHomeownerProfile();
+      checkProviderProfile();
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
     }
-  }, [visible, session]);
+  }, [visible, fadeAnim, checkHomeownerProfile, checkProviderProfile]);
 
-  const checkHomeownerProfile = async () => {
-    if (!session?.user) {
-      console.log('AccountSwitcher: No session available');
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      console.log('AccountSwitcher: Checking for existing homes for user:', session.user.id);
-      
-      // Check if user has any homes (this is what AuthContext checks)
-      const { data, error } = await supabase
-        .from('homes')
-        .select('id')
-        .eq('homeowner_id', profile?.id)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('AccountSwitcher: Error checking homes:', error);
-      }
-
-      const exists = !!data;
-      console.log('AccountSwitcher: Homeowner profile exists:', exists);
-      setHasHomeownerProfile(exists);
-    } catch (error) {
-      console.error('AccountSwitcher: Exception checking homeowner profile:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSwitchRole = async (targetRole: 'provider' | 'homeowner') => {
-    if (switching || !profile || !session) {
-      console.log('AccountSwitcher: Cannot switch - switching:', switching, 'profile:', !!profile, 'session:', !!session);
-      return;
-    }
-
-    // If already on target role, just close
-    if (profile.role === targetRole) {
-      console.log('AccountSwitcher: Already on target role:', targetRole);
-      onClose();
-      return;
-    }
-
-    try {
-      setSwitching(true);
-      console.log('=== ACCOUNT SWITCHER: Starting switch to', targetRole, '===');
-      console.log('Current role:', profile.role);
-      
-      // Use the AuthContext switchProfile method
-      await switchProfile(targetRole);
-      
-      // Close the dropdown
-      onClose();
-      
-      console.log('=== ACCOUNT SWITCHER: Switch complete ===');
-    } catch (error: any) {
-      console.error('AccountSwitcher: switchProfile failed', error);
-      Alert.alert('Switch Failed', error?.message || 'Please try again.');
-    } finally {
-      setSwitching(false);
-    }
+  const handleSwitch = async (role: 'provider' | 'homeowner') => {
+    onClose();
+    await switchProfile(role);
   };
 
   if (!visible) return null;
 
-  const currentRole = profile?.role || 'provider';
-
   return (
     <Modal
-      visible={visible}
       transparent
-      animationType="fade"
+      visible={visible}
+      animationType="none"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <BlurView intensity={80} tint="dark" style={styles.blurOverlay}>
-          <Pressable onPress={(e) => e.stopPropagation()}>
+      <TouchableOpacity 
+        style={styles.overlay} 
+        activeOpacity={1} 
+        onPress={onClose}
+      >
+        <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+          <TouchableOpacity activeOpacity={1}>
             <GlassView style={styles.dropdown}>
-              <Text style={styles.dropdownTitle}>Switch Account</Text>
-              <Text style={styles.dropdownSubtitle}>Choose which account to use</Text>
-
-              {/* Provider Option */}
+              <Text style={styles.title}>Switch Account</Text>
+              
               <TouchableOpacity
-                onPress={() => handleSwitchRole('provider')}
-                disabled={switching || loading}
-                style={styles.optionButton}
-              >
-                <GlassView style={[
+                style={[
                   styles.option,
-                  currentRole === 'provider' && styles.optionActive
-                ]}>
-                  <View style={styles.optionLeft}>
-                    <IconSymbol
-                      ios_icon_name="briefcase.fill"
-                      android_material_icon_name="business"
-                      size={24}
-                      color={currentRole === 'provider' ? colors.primary : colors.text}
-                    />
-                    <View style={styles.optionInfo}>
-                      <Text style={styles.optionTitle}>Provider</Text>
-                      <Text style={styles.optionDescription}>Manage your business</Text>
-                    </View>
+                  profile?.role === 'provider' && styles.activeOption,
+                ]}
+                onPress={() => handleSwitch('provider')}
+              >
+                <View style={styles.optionLeft}>
+                  <IconSymbol 
+                    ios_icon_name="briefcase.fill" 
+                    android_material_icon_name="business" 
+                    size={24} 
+                    color={profile?.role === 'provider' ? colors.primary : colors.text} 
+                  />
+                  <View>
+                    <Text style={[
+                      styles.optionTitle,
+                      profile?.role === 'provider' && styles.activeText,
+                    ]}>
+                      Provider
+                    </Text>
+                    <Text style={styles.optionDescription}>
+                      {hasProviderProfile ? 'Manage your business' : 'Create provider account'}
+                    </Text>
                   </View>
-                  {currentRole === 'provider' && (
-                    <IconSymbol
-                      ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check-circle"
-                      size={24}
-                      color={colors.primary}
-                    />
-                  )}
-                </GlassView>
+                </View>
+                {profile?.role === 'provider' && (
+                  <IconSymbol 
+                    ios_icon_name="checkmark.circle.fill" 
+                    android_material_icon_name="check-circle" 
+                    size={24} 
+                    color={colors.primary} 
+                  />
+                )}
               </TouchableOpacity>
 
-              {/* Homeowner Option */}
               <TouchableOpacity
-                onPress={() => handleSwitchRole('homeowner')}
-                disabled={switching || loading}
-                style={styles.optionButton}
-              >
-                <GlassView style={[
+                style={[
                   styles.option,
-                  currentRole === 'homeowner' && styles.optionActive
-                ]}>
-                  <View style={styles.optionLeft}>
-                    <IconSymbol
-                      ios_icon_name="house.fill"
-                      android_material_icon_name="home"
-                      size={24}
-                      color={currentRole === 'homeowner' ? colors.primary : colors.text}
-                    />
-                    <View style={styles.optionInfo}>
-                      <Text style={styles.optionTitle}>Homeowner</Text>
-                      <Text style={styles.optionDescription}>
-                        {hasHomeownerProfile ? 'Manage your home services' : 'Create homeowner account'}
-                      </Text>
-                    </View>
+                  profile?.role === 'homeowner' && styles.activeOption,
+                ]}
+                onPress={() => handleSwitch('homeowner')}
+              >
+                <View style={styles.optionLeft}>
+                  <IconSymbol 
+                    ios_icon_name="house.fill" 
+                    android_material_icon_name="home" 
+                    size={24} 
+                    color={profile?.role === 'homeowner' ? colors.primary : colors.text} 
+                  />
+                  <View>
+                    <Text style={[
+                      styles.optionTitle,
+                      profile?.role === 'homeowner' && styles.activeText,
+                    ]}>
+                      Homeowner
+                    </Text>
+                    <Text style={styles.optionDescription}>
+                      {hasHomeownerProfile ? 'Manage your homes' : 'Create homeowner account'}
+                    </Text>
                   </View>
-                  {currentRole === 'homeowner' ? (
-                    <IconSymbol
-                      ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check-circle"
-                      size={24}
-                      color={colors.primary}
-                    />
-                  ) : !hasHomeownerProfile ? (
-                    <IconSymbol
-                      ios_icon_name="plus.circle.fill"
-                      android_material_icon_name="add-circle"
-                      size={24}
-                      color={colors.primary}
-                    />
-                  ) : null}
-                </GlassView>
-              </TouchableOpacity>
-
-              {switching && (
-                <View style={styles.loadingContainer}>
-                  <Text style={styles.loadingText}>Switching account...</Text>
                 </View>
-              )}
-
-              {loading && (
-                <View style={styles.loadingContainer}>
-                  <Text style={styles.loadingText}>Loading...</Text>
-                </View>
-              )}
-
-              <TouchableOpacity onPress={onClose} style={styles.cancelButton}>
-                <Text style={styles.cancelText}>Cancel</Text>
+                {profile?.role === 'homeowner' && (
+                  <IconSymbol 
+                    ios_icon_name="checkmark.circle.fill" 
+                    android_material_icon_name="check-circle" 
+                    size={24} 
+                    color={colors.primary} 
+                  />
+                )}
               </TouchableOpacity>
             </GlassView>
-          </Pressable>
-        </BlurView>
-      </Pressable>
+          </TouchableOpacity>
+        </Animated.View>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -209,83 +166,55 @@ export function AccountSwitcherDropdown({ visible, onClose, anchorPosition }: Ac
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  blurOverlay: {
-    flex: 1,
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+  container: {
+    width: '85%',
+    maxWidth: 400,
   },
   dropdown: {
-    width: '100%',
-    maxWidth: 400,
-    padding: 24,
+    padding: 20,
   },
-  dropdownTitle: {
-    fontSize: 24,
+  title: {
+    fontSize: 20,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 20,
     textAlign: 'center',
-  },
-  dropdownSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  optionButton: {
-    marginBottom: 12,
   },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    backgroundColor: colors.glass,
   },
-  optionActive: {
-    borderWidth: 2,
-    borderColor: colors.primary,
+  activeOption: {
+    backgroundColor: colors.primary + '20',
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
   },
   optionLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
-  optionInfo: {
+    gap: 14,
     flex: 1,
   },
   optionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 4,
   },
+  activeText: {
+    color: colors.primary,
+  },
   optionDescription: {
     fontSize: 13,
-    color: colors.textSecondary,
-  },
-  loadingContainer: {
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  cancelButton: {
-    marginTop: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  cancelText: {
-    fontSize: 16,
-    fontWeight: '600',
     color: colors.textSecondary,
   },
 });

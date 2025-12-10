@@ -1,22 +1,23 @@
 
-import React, { useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import { IconSymbol } from './IconSymbol';
+import { GlassView } from '@/components/GlassView';
+import { IconSymbol } from '@/components/IconSymbol';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 interface ToastProps {
   message: string;
   type?: ToastType;
+  duration?: number;
   visible: boolean;
   onHide: () => void;
-  duration?: number;
 }
 
-export function Toast({ message, type = 'info', visible, onHide, duration = 3000 }: ToastProps) {
-  const opacity = React.useRef(new Animated.Value(0)).current;
-  const translateY = React.useRef(new Animated.Value(-100)).current;
+export function Toast({ message, type = 'info', duration = 3000, visible, onHide }: ToastProps) {
+  const [opacity] = useState(new Animated.Value(0));
+  const [translateY] = useState(new Animated.Value(-100));
 
   const hideToast = useCallback(() => {
     Animated.parallel([
@@ -30,7 +31,9 @@ export function Toast({ message, type = 'info', visible, onHide, duration = 3000
         duration: 300,
         useNativeDriver: true,
       }),
-    ]).start(() => onHide());
+    ]).start(() => {
+      onHide();
+    });
   }, [opacity, translateY, onHide]);
 
   useEffect(() => {
@@ -61,13 +64,13 @@ export function Toast({ message, type = 'info', visible, onHide, duration = 3000
   const getIcon = () => {
     switch (type) {
       case 'success':
-        return { ios: 'checkmark.circle.fill', android: 'check-circle', color: colors.success };
+        return { ios: 'checkmark.circle.fill', android: 'check-circle', color: colors.primary };
       case 'error':
         return { ios: 'xmark.circle.fill', android: 'error', color: colors.error };
       case 'warning':
-        return { ios: 'exclamationmark.triangle.fill', android: 'warning', color: colors.warning };
+        return { ios: 'exclamationmark.triangle.fill', android: 'warning', color: '#FFA500' };
       default:
-        return { ios: 'info.circle.fill', android: 'info', color: colors.accent };
+        return { ios: 'info.circle.fill', android: 'info', color: colors.primary };
     }
   };
 
@@ -83,15 +86,17 @@ export function Toast({ message, type = 'info', visible, onHide, duration = 3000
         },
       ]}
     >
-      <View style={[styles.toast, { borderLeftColor: icon.color }]}>
-        <IconSymbol
-          ios_icon_name={icon.ios}
-          android_material_icon_name={icon.android}
-          size={24}
-          color={icon.color}
-        />
-        <Text style={styles.message}>{message}</Text>
-      </View>
+      <TouchableOpacity activeOpacity={0.9} onPress={hideToast}>
+        <GlassView style={styles.toast}>
+          <IconSymbol
+            ios_icon_name={icon.ios}
+            android_material_icon_name={icon.android}
+            size={24}
+            color={icon.color}
+          />
+          <Text style={styles.message}>{message}</Text>
+        </GlassView>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
@@ -107,16 +112,8 @@ const styles = StyleSheet.create({
   toast: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.glass,
-    borderLeftWidth: 4,
-    borderRadius: 12,
     padding: 16,
     gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
   },
   message: {
     flex: 1,
