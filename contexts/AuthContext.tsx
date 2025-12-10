@@ -182,8 +182,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else if (error.message.includes('Email not confirmed')) {
           Alert.alert(
             'Email Not Confirmed',
-            'Please check your email and click the confirmation link before logging in.',
-            [{ text: 'OK' }]
+            'Please check your email and click the confirmation link before logging in. Check your spam folder if you don\'t see it.',
+            [
+              { text: 'OK' },
+              {
+                text: 'Resend Email',
+                onPress: async () => {
+                  const { error: resendError } = await supabase.auth.resend({
+                    type: 'signup',
+                    email: email,
+                  });
+                  if (resendError) {
+                    Alert.alert('Error', 'Failed to resend confirmation email. Please try again later.');
+                  } else {
+                    Alert.alert('Success', 'Confirmation email sent! Please check your inbox.');
+                  }
+                }
+              }
+            ]
           );
         } else {
           Alert.alert(
@@ -246,7 +262,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name,
             role,
           },
-          emailRedirectTo: 'https://natively.dev/email-confirmed',
         },
       });
 
@@ -257,7 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error.message.includes('User already registered') || error.message.includes('already exists')) {
           Alert.alert(
             'Account Already Exists',
-            'An account with this email already exists. Please sign in instead.',
+            'An account with this email already exists. Please sign in instead or use a different email address.',
             [
               { text: 'Cancel', style: 'cancel' },
               {
@@ -290,7 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Email confirmation is required
           Alert.alert(
             'Confirm Your Email',
-            'We\'ve sent a confirmation email to ' + email + '. Please click the link in the email to activate your account.',
+            'We\'ve sent a confirmation email to ' + email + '. Please click the link in the email to activate your account, then return here to sign in.',
             [{ 
               text: 'OK',
               onPress: () => {
@@ -311,13 +326,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Show success alert
         Alert.alert(
           'Account Created!',
-          'Your account has been created successfully.',
+          'Your account has been created successfully. Let\'s get you set up!',
           [{ 
             text: 'Continue',
             onPress: () => {
-              // Navigate to appropriate dashboard
+              // Navigate to appropriate onboarding or dashboard
               if (role === 'provider') {
-                router.replace('/(provider)/(tabs)');
+                // Check if onboarding is completed
+                supabase
+                  .from('organizations')
+                  .select('onboarding_completed')
+                  .eq('owner_id', data.user.id)
+                  .single()
+                  .then(({ data: orgData }) => {
+                    if (orgData && !orgData.onboarding_completed) {
+                      router.replace('/(provider)/onboarding/business-basics');
+                    } else {
+                      router.replace('/(provider)/(tabs)');
+                    }
+                  });
               } else {
                 router.replace('/(homeowner)/(tabs)');
               }
@@ -420,7 +447,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('AuthContext: Existing organization:', existingOrg ? 'found' : 'not found');
 
         if (!existingOrg) {
-          // No organization exists, create one
+          // No organization exists, ask to create one
           Alert.alert(
             'Create Provider Account',
             'You don\'t have a provider account yet. Would you like to create one?',
@@ -467,8 +494,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     // Refresh profile data
                     await loadUserData(session.user.id);
 
-                    console.log('AuthContext: Navigating to provider dashboard...');
-                    router.replace('/(provider)/(tabs)');
+                    console.log('AuthContext: Navigating to onboarding...');
+                    // Navigate to onboarding
+                    router.replace('/(provider)/onboarding/business-basics');
+                    
+                    // Small delay to give RoleGuard time to see the new value
+                    await new Promise(resolve => setTimeout(resolve, 150));
                   } catch (error: any) {
                     console.error('AuthContext: Error creating provider account:', error);
                     Alert.alert('Error', 'Failed to create provider account. Please try again.');
@@ -478,10 +509,128 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ]
           );
           return;
+        } else {
+          // Organization exists, check if onboarding is completed
+          if (!existingOrg.onboarding_completed) {
+            Alert.alert(
+              'Complete Onboarding',
+              'Please complete your provider onboarding first.',
+              [{ 
+                text: 'Continue',
+                onPress: async () => {
+                  try {
+                    console.log('AuthContext: Updating role and navigating to onboarding...');
+                    
+                    // Update role
+                    const { error: roleError } = await supabase
+                      .from('profiles')
+                      .update({ role: 'provider', updated_at: new Date().toISOString() })
+                      .eq('id', profile.id);
+                    
+                    if (roleError) throw roleError;
+
+                    await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'provider');
+                    await loadUserData(session.user.id);
+                    
+                    router.replace('/(provider)/onboarding/business-basics');
+                    
+                    // Small delay to give RoleGuard time to see the new value
+                    await new Promise(resolve => setTimeout(resolve, 150));
+                  } catch (error: any) {
+                    console.error('AuthContext: Error switching to provider:', error);
+                    Alert.alert('Error', 'Failed to switch profile. Please try again.');
+                  }
+                }
+              }]
+            );
+            return;
+          }
         }
       }
 
-      // If switching to homeowner, just update role
+      // Check if switching to homeowner
+      if (targetRole === 'homeowner') {
+        console.log('AuthContext: Switching to homeowner...');
+        
+        const { data: existingHomes, error: homesError } = await supabase
+          .from('homes')
+          .select('*')
+          .eq('homeowner_id', profile.id);
+
+        if (homesError) {
+          console.error('AuthContext: Error checking homes:', homesError);
+          throw homesError;
+        }
+
+        console.log('AuthContext: Existing homes:', existingHomes?.length || 0);
+
+        if (!existingHomes || existingHomes.length === 0) {
+          // No homes exist, ask to add one
+          Alert.alert(
+            'Switch to Homeowner',
+            'You don\'t have any homes added yet. Would you like to add your first home or skip for now?',
+            [
+              { 
+                text: 'Skip for Now', 
+                onPress: async () => {
+                  try {
+                    console.log('AuthContext: Skipping home setup, updating role...');
+                    
+                    // Update role and navigate
+                    const { error: roleError } = await supabase
+                      .from('profiles')
+                      .update({ role: 'homeowner', updated_at: new Date().toISOString() })
+                      .eq('id', profile.id);
+                    
+                    if (roleError) throw roleError;
+
+                    await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'homeowner');
+                    await loadUserData(session.user.id);
+                    
+                    router.replace('/(homeowner)/(tabs)');
+                    
+                    // Small delay to give RoleGuard time to see the new value
+                    await new Promise(resolve => setTimeout(resolve, 150));
+                  } catch (error: any) {
+                    console.error('AuthContext: Error switching to homeowner:', error);
+                    Alert.alert('Error', 'Failed to switch profile. Please try again.');
+                  }
+                }
+              },
+              {
+                text: 'Add Home',
+                onPress: async () => {
+                  try {
+                    console.log('AuthContext: Navigating to add home...');
+                    
+                    // Update profile role
+                    const { error: roleError } = await supabase
+                      .from('profiles')
+                      .update({ role: 'homeowner', updated_at: new Date().toISOString() })
+                      .eq('id', profile.id);
+
+                    if (roleError) throw roleError;
+
+                    await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'homeowner');
+                    await loadUserData(session.user.id);
+
+                    router.replace('/(homeowner)/onboarding/profile');
+                    
+                    // Small delay to give RoleGuard time to see the new value
+                    await new Promise(resolve => setTimeout(resolve, 150));
+                  } catch (error: any) {
+                    console.error('AuthContext: Error creating homeowner account:', error);
+                    Alert.alert('Error', 'Failed to create homeowner account. Please try again.');
+                  }
+                }
+              }
+            ]
+          );
+          return;
+        }
+      }
+
+      // If we get here, we can switch directly
       console.log('AuthContext: Switching role directly...');
       const { error: updateError } = await supabase
         .from('profiles')
@@ -508,6 +657,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         router.replace('/(homeowner)/(tabs)');
       }
+
+      // Small delay to give RoleGuard time to see the new value
+      await new Promise(resolve => setTimeout(resolve, 150));
 
       Alert.alert(
         'Profile Switched',

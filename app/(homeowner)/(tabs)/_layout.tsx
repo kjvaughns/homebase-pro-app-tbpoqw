@@ -9,36 +9,30 @@ export default function HomeownerTabLayout() {
       name: 'index',
       route: '/(homeowner)/(tabs)/',
       icon: 'home',
-      label: 'Dashboard',
+      label: 'Home',
     },
     {
       name: 'marketplace',
       route: '/(homeowner)/(tabs)/marketplace',
       icon: 'search',
-      label: 'Marketplace',
+      label: 'Browse',
     },
     {
       name: 'bookings',
       route: '/(homeowner)/(tabs)/bookings',
       icon: 'calendar-today',
-      label: 'Schedule',
-    },
-    {
-      name: 'history',
-      route: '/(homeowner)/(tabs)/history',
-      icon: 'history',
-      label: 'History',
+      label: 'Bookings',
     },
     {
       name: 'settings',
       route: '/(homeowner)/(tabs)/settings',
-      icon: 'settings',
-      label: 'Settings',
+      icon: 'more-horiz',
+      label: 'More',
     },
   ];
 
   return (
-    <React.Fragment>
+    <>
       <Stack
         screenOptions={{
           headerShown: false,
@@ -48,10 +42,9 @@ export default function HomeownerTabLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="marketplace" />
         <Stack.Screen name="bookings" />
-        <Stack.Screen name="history" />
         <Stack.Screen name="settings" />
       </Stack>
       <FloatingTabBar tabs={tabs} />
-    </React.Fragment>
+    </>
   );
 }
