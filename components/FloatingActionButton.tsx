@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -48,12 +48,6 @@ export default function FloatingActionButton() {
       iosIcon: 'doc.text', 
       androidIcon: 'receipt', 
       route: '/(provider)/money/create-invoice' 
-    },
-    { 
-      label: 'Payment Link', 
-      iosIcon: 'link', 
-      androidIcon: 'link', 
-      route: '/(provider)/money/payment-link' 
     },
     { 
       label: 'Broadcast', 
@@ -210,9 +204,7 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     flex: 1,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingBottom: 130,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
   },
   blurBackdrop: {
     flex: 1,
@@ -225,7 +217,6 @@ const styles = StyleSheet.create({
     width: '85%',
     maxWidth: 340,
     gap: 12,
-    paddingHorizontal: 20,
   },
   actionButton: {
     borderRadius: 16,

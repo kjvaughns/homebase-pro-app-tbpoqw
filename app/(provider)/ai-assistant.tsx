@@ -1,12 +1,12 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { sendAIMessage } from '@/services/ai';
 
 interface Message {
   id: string;
@@ -37,7 +37,10 @@ export default function AIAssistantScreen() {
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!inputText.trim() || loading || !profile?.id) return;
+    if (!inputText.trim() || loading || !profile?.id) {
+      console.log('AI Assistant: Cannot send message - missing requirements');
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -51,32 +54,25 @@ export default function AIAssistantScreen() {
     setLoading(true);
 
     try {
-      console.log('AI Assistant: Calling chat_assistant function...');
+      console.log('AI Assistant: Calling AI service...');
       
-      const { data, error } = await supabase.functions.invoke('chat-assistant', {
-        body: {
-          user_id: profile.id,
-          role: 'provider',
-          assistant_type: 'provider_assistant',
-          message: userMessage.content,
-          conversation_history: messages.map(m => ({
-            role: m.role,
-            content: m.content,
-          })),
-        },
-      });
-
-      if (error) {
-        console.error('AI Assistant: Error:', error);
-        throw error;
-      }
+      const responseText = await sendAIMessage(
+        profile.id,
+        'provider',
+        'provider_assistant',
+        userMessage.content,
+        messages.map(m => ({
+          role: m.role,
+          content: m.content,
+        }))
+      );
 
       console.log('AI Assistant: Response received');
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data?.response || data?.message || 'I apologize, but I couldn\'t generate a response. Please try again.',
+        content: responseText,
         timestamp: new Date(),
       };
 
@@ -84,19 +80,10 @@ export default function AIAssistantScreen() {
     } catch (error: any) {
       console.error('AI Assistant: Error sending message:', error);
       
-      Alert.alert(
-        'Connection Error',
-        'Failed to connect to AI assistant. Please check your connection and try again.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Retry', onPress: () => sendMessage() }
-        ]
-      );
-
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'I apologize, but I encountered an error. Please try again later.',
+        content: `❌ ${error.message || 'I apologize, but I encountered an error. Please try again later.'}\n\nTap the retry button below to try again.`,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
