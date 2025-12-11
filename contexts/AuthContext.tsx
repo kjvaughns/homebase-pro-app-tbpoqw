@@ -14,6 +14,7 @@ interface AuthContextType {
   session: Session | null;
   isAuthenticated: boolean;
   loading: boolean;
+  error: string | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string, role: UserRole) => Promise<void>;
   logout: () => Promise<void>;
@@ -32,36 +33,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Task 1.1: Wrap all async calls in try/catch/finally
   const loadUserData = useCallback(async (userId: string, retries = 3) => {
     try {
       console.log('AuthContext: Loading user data for:', userId);
+      setError(null);
       
       // Load profile with retries
       let profileData = null;
       let profileError = null;
       
       for (let i = 0; i < retries; i++) {
-        const result = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', userId)
-          .single();
-        
-        profileData = result.data;
-        profileError = result.error;
-        
-        if (profileData) break;
-        
-        if (i < retries - 1) {
-          console.log(`AuthContext: Profile not found, retrying... (${i + 1}/${retries})`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+          const result = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', userId)
+            .single();
+          
+          profileData = result.data;
+          profileError = result.error;
+          
+          if (profileData) break;
+          
+          if (i < retries - 1) {
+            console.log(`AuthContext: Profile not found, retrying... (${i + 1}/${retries})`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } catch (retryError) {
+          console.error(`AuthContext: Retry ${i + 1} failed:`, retryError);
+          if (i === retries - 1) {
+            throw retryError;
+          }
         }
       }
 
       if (profileError && !profileData) {
         console.error('AuthContext: Profile error after retries:', profileError);
-        setLoading(false);
+        setError('Failed to load profile. Please try logging in again.');
+        // Task 1.1: Send user to login instead of leaving on blank spinner
+        Alert.alert(
+          'Profile Load Error',
+          'Unable to load your profile. Please sign in again.',
+          [{ 
+            text: 'OK',
+            onPress: () => {
+              setLoading(false);
+              router.replace('/auth/login');
+            }
+          }]
+        );
         return;
       }
 
@@ -78,13 +101,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // If stored role differs from profile role, update profile
         if (storedRole && storedRole !== profileData.role && ['provider', 'homeowner'].includes(storedRole)) {
           console.log('AuthContext: Syncing stored role with profile:', storedRole);
-          const { error: updateError } = await supabase
-            .from('profiles')
-            .update({ role: storedRole, updated_at: new Date().toISOString() })
-            .eq('id', profileData.id);
-          
-          if (!updateError) {
-            profileData.role = storedRole;
+          try {
+            const { error: updateError } = await supabase
+              .from('profiles')
+              .update({ role: storedRole, updated_at: new Date().toISOString() })
+              .eq('id', profileData.id);
+            
+            if (!updateError) {
+              profileData.role = storedRole;
+            }
+          } catch (updateErr) {
+            console.error('AuthContext: Error syncing role:', updateErr);
           }
         } else if (profileData.role) {
           // Store current role
@@ -103,28 +130,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           createdAt: new Date(profileData.created_at),
         });
 
-        // Load organization if provider
+        // Task 1.2: Only load organization if provider (avoid heavy parallel work)
         if (profileData.role === 'provider') {
-          const { data: orgData } = await supabase
-            .from('organizations')
-            .select('*')
-            .eq('owner_id', profileData.id)
-            .single();
+          try {
+            const { data: orgData, error: orgError } = await supabase
+              .from('organizations')
+              .select('*')
+              .eq('owner_id', profileData.id)
+              .single();
 
-          if (orgData) {
-            console.log('AuthContext: Organization loaded:', orgData.id);
-            setOrganization(orgData);
-          } else {
-            console.log('AuthContext: No organization found for provider');
+            if (orgError) {
+              console.warn('AuthContext: Organization load error:', orgError);
+              setOrganization(null);
+            } else if (orgData) {
+              console.log('AuthContext: Organization loaded:', orgData.id);
+              setOrganization(orgData);
+            } else {
+              console.log('AuthContext: No organization found for provider');
+              setOrganization(null);
+            }
+          } catch (orgErr) {
+            console.error('AuthContext: Organization load exception:', orgErr);
             setOrganization(null);
           }
         } else {
           setOrganization(null);
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('AuthContext: Error loading user data:', error);
+      setError(error.message || 'Failed to load user data');
+      // Task 1.1: Show error and redirect to login
+      Alert.alert(
+        'Error',
+        'Failed to load your account. Please sign in again.',
+        [{ 
+          text: 'OK',
+          onPress: () => router.replace('/auth/login')
+        }]
+      );
     } finally {
+      // Task 1.1: Always clear loading flags in finally
       setLoading(false);
     }
   }, []);
@@ -132,16 +178,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     console.log('AuthContext: Initializing...');
     
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('AuthContext: Initial session:', session?.user?.id || 'none');
-      setSession(session);
-      if (session?.user) {
-        loadUserData(session.user.id);
-      } else {
+    // Task 1.1: Wrap in try/catch
+    const initAuth = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('AuthContext: Session error:', sessionError);
+          setError('Failed to get session');
+          setLoading(false);
+          return;
+        }
+
+        console.log('AuthContext: Initial session:', session?.user?.id || 'none');
+        setSession(session);
+        
+        if (session?.user) {
+          await loadUserData(session.user.id);
+        } else {
+          setLoading(false);
+        }
+      } catch (err: any) {
+        console.error('AuthContext: Init error:', err);
+        setError(err.message || 'Initialization failed');
         setLoading(false);
       }
-    });
+    };
+
+    initAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -149,6 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       
       if (session?.user) {
+        setLoading(true);
         await loadUserData(session.user.id);
       } else {
         setUser(null);
@@ -168,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('AuthContext: Attempting login for:', email);
       setLoading(true);
+      setError(null);
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -197,7 +263,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
         }
         
-        setLoading(false);
         throw error;
       }
 
@@ -227,10 +292,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('AuthContext: Login exception:', error);
-      setLoading(false);
+      setError(error.message || 'Login failed');
       throw error;
+    } finally {
+      // Task 1.1: Always clear loading in finally
+      setLoading(false);
     }
   };
 
@@ -238,6 +306,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('AuthContext: Attempting signup for:', email, 'as', role);
       setLoading(true);
+      setError(null);
       
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -262,7 +331,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               {
                 text: 'Go to Sign In',
                 onPress: () => {
-                  setLoading(false);
                   router.replace('/auth/login');
                 }
               }
@@ -276,7 +344,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
         }
         
-        setLoading(false);
         throw error;
       }
 
@@ -290,7 +357,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             [{ 
               text: 'OK',
               onPress: () => {
-                setLoading(false);
                 router.replace('/auth/login');
               }
             }]
@@ -319,6 +385,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     } else {
                       router.replace('/(provider)/(tabs)');
                     }
+                  })
+                  .catch(() => {
+                    router.replace('/(provider)/(tabs)');
                   });
               } else {
                 router.replace('/(homeowner)/(tabs)');
@@ -327,16 +396,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }]
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('AuthContext: Signup exception:', error);
-      setLoading(false);
+      setError(error.message || 'Signup failed');
       throw error;
+    } finally {
+      // Task 1.1: Always clear loading in finally
+      setLoading(false);
     }
   };
 
   const logout = async () => {
     try {
       console.log('AuthContext: Logging out user...');
+      setLoading(true);
+      setError(null);
       
       const { error } = await supabase.auth.signOut();
       
@@ -359,13 +433,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log('AuthContext: Logout successful, redirecting to login...');
       router.replace('/auth/login');
-    } catch (error) {
+    } catch (error: any) {
       console.error('AuthContext: Logout exception:', error);
+      setError(error.message || 'Logout failed');
       Alert.alert(
         'Logout Error',
         'An unexpected error occurred. Please try again.',
         [{ text: 'OK' }]
       );
+    } finally {
+      // Task 1.1: Always clear loading in finally
+      setLoading(false);
     }
   };
 
@@ -400,6 +478,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
+      setLoading(true);
+      setError(null);
+
       // If already on target role, just navigate
       if (profile.role === targetRole) {
         console.log('AuthContext: Already on target role, navigating...');
@@ -434,6 +515,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 text: 'Create Account',
                 onPress: async () => {
                   try {
+                    setLoading(true);
                     // Update role in Supabase
                     const { error: roleError } = await supabase
                       .from('profiles')
@@ -467,6 +549,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   } catch (error: any) {
                     console.error('AuthContext: Error creating provider account:', error);
                     Alert.alert('Error', 'Failed to create provider account. Please try again.');
+                  } finally {
+                    setLoading(false);
                   }
                 }
               }
@@ -482,6 +566,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               text: 'Continue',
               onPress: async () => {
                 try {
+                  setLoading(true);
                   // Update role
                   const { error: roleError } = await supabase
                     .from('profiles')
@@ -497,6 +582,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 } catch (error: any) {
                   console.error('AuthContext: Error switching to provider:', error);
                   Alert.alert('Error', 'Failed to switch profile. Please try again.');
+                } finally {
+                  setLoading(false);
                 }
               }
             }]
@@ -542,18 +629,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('=== AUTH CONTEXT: SWITCH PROFILE END ===');
     } catch (error: any) {
       console.error('AuthContext: Error switching profile:', error);
+      setError(error.message || 'Failed to switch profile');
       Alert.alert(
         'Switch Failed',
         'Unable to switch profile. Please try again.',
         [{ text: 'OK' }]
       );
+    } finally {
+      setLoading(false);
     }
   };
 
   const refreshProfile = useCallback(async () => {
     console.log('AuthContext: Refreshing profile...');
     if (session?.user) {
-      await loadUserData(session.user.id);
+      setLoading(true);
+      try {
+        await loadUserData(session.user.id);
+      } catch (err) {
+        console.error('AuthContext: Refresh error:', err);
+      } finally {
+        setLoading(false);
+      }
     }
   }, [session, loadUserData]);
 
@@ -566,6 +663,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         isAuthenticated: !!user && !!session,
         loading,
+        error,
         login,
         signup,
         logout,

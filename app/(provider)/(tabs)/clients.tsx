@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl, ActivityIndicator } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
@@ -15,44 +15,64 @@ export default function ClientsScreen() {
   const [clients, setClients] = useState<Client[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'lead' | 'active' | 'inactive'>('all');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Task 2.1 & 2.3: Wrap in try/catch/finally, memoize with useCallback
   const loadClients = useCallback(async () => {
-    if (!organization?.id) return;
+    if (!organization?.id) {
+      setLoading(false);
+      return;
+    }
     
     try {
-      setLoading(true);
-      const { data, error } = await supabase
+      setError(null);
+      console.log('Clients: Loading for organization:', organization.id);
+      
+      // Task 3.1: Add limit to query
+      const { data, error: fetchError } = await supabase
         .from('clients')
         .select('*')
         .eq('organization_id', organization.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(100);
 
-      if (error) throw error;
+      // Task 3.3: Handle errors explicitly
+      if (fetchError) {
+        console.error('Clients: Query error:', fetchError);
+        throw fetchError;
+      }
+
       setClients(data || []);
-    } catch (error) {
-      console.error('Error loading clients:', error);
+      console.log('Clients: Loaded', data?.length || 0, 'clients');
+    } catch (error: any) {
+      console.error('Clients: Error loading:', error);
+      setError(error.message || 'Failed to load clients');
     } finally {
+      // Task 2.1: Always reset loading in finally
       setLoading(false);
+      setRefreshing(false);
     }
   }, [organization?.id]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadClients();
-    setRefreshing(false);
   }, [loadClients]);
 
+  // Task 2.3: Only fetch on mount or when organization changes
   useEffect(() => {
     loadClients();
   }, [loadClients]);
 
-  // Fix 1.4: Reload clients when screen comes into focus (after adding a client)
+  // Reload clients when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      loadClients();
-    }, [loadClients])
+      if (!loading) {
+        loadClients();
+      }
+    }, [loadClients, loading])
   );
 
   const filteredClients = clients.filter(client => {
@@ -87,6 +107,59 @@ export default function ClientsScreen() {
       .toUpperCase()
       .slice(0, 2);
   };
+
+  // Task 2.2: Loading state
+  if (loading && !refreshing) {
+    return (
+      <View style={[commonStyles.container, styles.centerContainer]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading clients...</Text>
+      </View>
+    );
+  }
+
+  // Task 2.2: Error state with retry
+  if (error && !refreshing) {
+    return (
+      <View style={[commonStyles.container, styles.centerContainer]}>
+        <GlassView style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={64}
+            color={colors.error}
+          />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadClients}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </GlassView>
+      </View>
+    );
+  }
+
+  // Task 4.2: Check for missing organization
+  if (!organization) {
+    return (
+      <View style={[commonStyles.container, styles.centerContainer]}>
+        <GlassView style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="building.2"
+            android_material_icon_name="business"
+            size={64}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.errorText}>No organization found</Text>
+          <TouchableOpacity 
+            style={styles.retryButton} 
+            onPress={() => router.push('/(provider)/onboarding/business-basics')}
+          >
+            <Text style={styles.retryButtonText}>Start Onboarding</Text>
+          </TouchableOpacity>
+        </GlassView>
+      </View>
+    );
+  }
 
   return (
     <View style={commonStyles.container}>
@@ -206,6 +279,7 @@ export default function ClientsScreen() {
           ))}
         </View>
 
+        {/* Task 2.2: Empty state */}
         {filteredClients.length === 0 && !loading && (
           <GlassView style={styles.emptyState}>
             <IconSymbol ios_icon_name="person.2" android_material_icon_name="people" size={64} color={colors.textSecondary} />
@@ -232,6 +306,40 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: 20,
     paddingBottom: 120,
+  },
+  centerContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 16,
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+    width: '100%',
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.error,
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
   },
   header: {
     marginBottom: 24,

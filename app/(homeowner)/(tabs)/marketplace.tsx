@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { ProviderCard } from '@/components/ProviderCard';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 import { EmptyState } from '@/components/EmptyState';
+import { GlassView } from '@/components/GlassView';
 
 interface MarketplaceProvider {
   id: string;
@@ -41,11 +42,13 @@ export default function Marketplace() {
     'Electrical',
   ];
 
+  // Task 2.1 & 2.3: Wrap in try/catch/finally, memoize with useCallback
   const loadProviders = useCallback(async () => {
     try {
       setError(null);
       console.log('Marketplace: Loading published providers...');
       
+      // Task 3.1: Add limit to query
       const { data, error: fetchError } = await supabase
         .from('org_marketplace_profiles')
         .select(`
@@ -60,8 +63,11 @@ export default function Marketplace() {
           organizations!inner(id, business_name)
         `)
         .eq('is_published', true)
-        .not('slug', 'is', null);
+        .not('slug', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(50);
 
+      // Task 3.3: Handle errors explicitly
       if (fetchError) {
         console.error('Marketplace: Error loading providers:', fetchError);
         throw fetchError;
@@ -71,8 +77,9 @@ export default function Marketplace() {
       setProviders(data || []);
     } catch (err: any) {
       console.error('Marketplace: Error:', err);
-      setError('Failed to load providers. Please try again.');
+      setError(err.message || 'Failed to load providers. Please try again.');
     } finally {
+      // Task 2.1: Always reset loading in finally
       setLoading(false);
       setRefreshing(false);
     }
@@ -82,9 +89,17 @@ export default function Marketplace() {
     loadProviders();
   }, [loadProviders]);
 
-  const onRefresh = useCallback(() => {
+  useFocusEffect(
+    useCallback(() => {
+      if (!loading) {
+        loadProviders();
+      }
+    }, [loadProviders, loading])
+  );
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    loadProviders();
+    await loadProviders();
   }, [loadProviders]);
 
   const filteredProviders = providers.filter(provider => {
@@ -102,13 +117,32 @@ export default function Marketplace() {
     }
   };
 
-  if (loading) {
+  // Task 2.2: Loading state
+  if (loading && !refreshing) {
     return (
-      <View style={[commonStyles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[commonStyles.container, styles.centerContainer]}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[commonStyles.textSecondary, { marginTop: 16 }]}>
-          Loading providers...
-        </Text>
+        <Text style={styles.loadingText}>Loading providers...</Text>
+      </View>
+    );
+  }
+
+  // Task 2.2: Error state with retry
+  if (error && !refreshing) {
+    return (
+      <View style={[commonStyles.container, styles.centerContainer]}>
+        <GlassView style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={64}
+            color={colors.error}
+          />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadProviders}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </GlassView>
       </View>
     );
   }
@@ -171,16 +205,7 @@ export default function Marketplace() {
           />
         }
       >
-        {error && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadProviders}>
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {!error && filteredProviders.length > 0 && (
+        {filteredProviders.length > 0 && (
           <View style={styles.results}>
             <Text style={styles.resultsText}>
               {filteredProviders.length} provider{filteredProviders.length !== 1 ? 's' : ''} found
@@ -188,7 +213,8 @@ export default function Marketplace() {
           </View>
         )}
 
-        {!error && filteredProviders.length === 0 && !loading && (
+        {/* Task 2.2: Empty state */}
+        {filteredProviders.length === 0 && !loading && (
           <EmptyState
             icon="storefront"
             title="No Providers Found"
@@ -224,6 +250,40 @@ export default function Marketplace() {
 }
 
 const styles = StyleSheet.create({
+  centerContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 16,
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+    width: '100%',
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.error,
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
   header: {
     paddingTop: 60,
     paddingHorizontal: 20,
@@ -290,26 +350,5 @@ const styles = StyleSheet.create({
   resultsText: {
     fontSize: 14,
     color: colors.textSecondary,
-  },
-  errorContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  errorText: {
-    fontSize: 16,
-    color: colors.error,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

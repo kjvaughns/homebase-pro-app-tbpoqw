@@ -1,7 +1,7 @@
 
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, RefreshControl } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassView } from '@/components/GlassView';
@@ -23,107 +23,163 @@ export default function ProviderDashboard() {
   const [todaysJobs, setTodaysJobs] = useState<Booking[]>([]);
   const [unpaidInvoices, setUnpaidInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [setupTasks, setSetupTasks] = useState({
     stripeSetup: false,
     hasServices: false,
     hasEnoughClients: false,
   });
 
-  useEffect(() => {
-    if (organization?.id) {
-      loadDashboardData();
+  // Task 2.1 & 2.3: Wrap in try/catch/finally, memoize with useCallback
+  const loadDashboardData = useCallback(async () => {
+    if (!organization?.id) {
+      setLoading(false);
+      return;
     }
-  }, [organization?.id]);
 
-  const loadDashboardData = async () => {
     try {
-      if (!organization?.id) return;
+      setError(null);
+      console.log('Dashboard: Loading data for organization:', organization.id);
 
-      // Load total clients count
-      const { count: clientsCount } = await supabase
-        .from('clients')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', organization.id);
-
-      // Load jobs completed (all time)
-      const { count: completedCount } = await supabase
-        .from('bookings')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', organization.id)
-        .eq('status', 'completed');
-
-      // Calculate MTD Revenue (sum of payments this month)
       const today = new Date();
       const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      
-      const { data: monthlyPayments } = await supabase
-        .from('payments')
-        .select('amount')
-        .eq('organization_id', organization.id)
-        .eq('status', 'succeeded')
-        .gte('created_at', firstDayOfMonth.toISOString());
-
-      const mtdRevenue = monthlyPayments?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;
-
-      // Load upcoming appointments (next 7 days)
       const nextWeek = new Date(today);
       nextWeek.setDate(today.getDate() + 7);
 
-      const { count: upcomingCount } = await supabase
-        .from('bookings')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', organization.id)
-        .gte('scheduled_date', today.toISOString().split('T')[0])
-        .lte('scheduled_date', nextWeek.toISOString().split('T')[0])
-        .in('status', ['pending', 'confirmed']);
+      // Task 3.2: Run queries in parallel with Promise.all
+      const [
+        clientsResult,
+        completedResult,
+        paymentsResult,
+        upcomingResult,
+        todayBookingsResult,
+        invoicesResult,
+        servicesResult,
+      ] = await Promise.all([
+        // Task 3.1: Add limits to queries
+        supabase
+          .from('clients')
+          .select('*', { count: 'exact', head: true })
+          .eq('organization_id', organization.id)
+          .limit(1000),
+        
+        supabase
+          .from('bookings')
+          .select('*', { count: 'exact', head: true })
+          .eq('organization_id', organization.id)
+          .eq('status', 'completed')
+          .limit(1000),
+        
+        supabase
+          .from('payments')
+          .select('amount')
+          .eq('organization_id', organization.id)
+          .eq('status', 'succeeded')
+          .gte('created_at', firstDayOfMonth.toISOString())
+          .limit(500),
+        
+        supabase
+          .from('bookings')
+          .select('*', { count: 'exact', head: true })
+          .eq('organization_id', organization.id)
+          .gte('scheduled_date', today.toISOString().split('T')[0])
+          .lte('scheduled_date', nextWeek.toISOString().split('T')[0])
+          .in('status', ['pending', 'confirmed'])
+          .limit(100),
+        
+        supabase
+          .from('bookings')
+          .select('*, clients(name)')
+          .eq('organization_id', organization.id)
+          .eq('scheduled_date', today.toISOString().split('T')[0])
+          .neq('status', 'cancelled')
+          .order('scheduled_time', { ascending: true })
+          .limit(10),
+        
+        supabase
+          .from('invoices')
+          .select('*, clients(name)')
+          .eq('organization_id', organization.id)
+          .in('status', ['sent', 'overdue'])
+          .order('due_date', { ascending: true })
+          .limit(3),
+        
+        supabase
+          .from('services')
+          .select('id')
+          .eq('organization_id', organization.id)
+          .limit(1),
+      ]);
 
-      // Load today's jobs
-      const { data: todayBookings } = await supabase
-        .from('bookings')
-        .select('*, clients(name)')
-        .eq('organization_id', organization.id)
-        .eq('scheduled_date', today.toISOString().split('T')[0])
-        .neq('status', 'cancelled')
-        .order('scheduled_time', { ascending: true });
+      // Task 3.3: Handle errors explicitly
+      if (clientsResult.error) {
+        console.warn('Dashboard: Clients query error:', clientsResult.error);
+      }
+      if (completedResult.error) {
+        console.warn('Dashboard: Completed jobs query error:', completedResult.error);
+      }
+      if (paymentsResult.error) {
+        console.warn('Dashboard: Payments query error:', paymentsResult.error);
+      }
+      if (upcomingResult.error) {
+        console.warn('Dashboard: Upcoming query error:', upcomingResult.error);
+      }
+      if (todayBookingsResult.error) {
+        console.warn('Dashboard: Today bookings query error:', todayBookingsResult.error);
+      }
+      if (invoicesResult.error) {
+        console.warn('Dashboard: Invoices query error:', invoicesResult.error);
+      }
 
-      // Load unpaid invoices (top 3)
-      const { data: invoices } = await supabase
-        .from('invoices')
-        .select('*, clients(name)')
-        .eq('organization_id', organization.id)
-        .in('status', ['sent', 'overdue'])
-        .order('due_date', { ascending: true })
-        .limit(3);
-
-      // Check setup tasks
-      const { data: services } = await supabase
-        .from('services')
-        .select('id')
-        .eq('organization_id', organization.id)
-        .limit(1);
+      const mtdRevenue = paymentsResult.data?.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) || 0;
 
       setStats({
-        totalClients: clientsCount || 0,
-        jobsCompleted: completedCount || 0,
+        totalClients: clientsResult.count || 0,
+        jobsCompleted: completedResult.count || 0,
         mtdRevenue: Math.round(mtdRevenue),
-        upcomingAppointments: upcomingCount || 0,
+        upcomingAppointments: upcomingResult.count || 0,
       });
 
-      setTodaysJobs(todayBookings || []);
-      setUnpaidInvoices(invoices || []);
+      setTodaysJobs(todayBookingsResult.data || []);
+      setUnpaidInvoices(invoicesResult.data || []);
 
       setSetupTasks({
         stripeSetup: !!organization.stripe_account_id,
-        hasServices: (services?.length || 0) > 0,
-        hasEnoughClients: (clientsCount || 0) >= 3,
+        hasServices: (servicesResult.data?.length || 0) > 0,
+        hasEnoughClients: (clientsResult.count || 0) >= 3,
       });
 
+      console.log('Dashboard: Data loaded successfully');
+    } catch (error: any) {
+      console.error('Dashboard: Error loading data:', error);
+      // Task 3.3: Show visible error message
+      setError(error.message || 'Failed to load dashboard data');
+    } finally {
+      // Task 2.1: Always reset loading in finally
       setLoading(false);
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-      setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [organization?.id]);
+
+  // Task 2.3: Only fetch on mount or when organization changes
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  // Reload on focus
+  useFocusEffect(
+    useCallback(() => {
+      if (!loading) {
+        loadDashboardData();
+      }
+    }, [loadDashboardData, loading])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadDashboardData();
+  }, [loadDashboardData]);
 
   const handleKPIPress = (type: string) => {
     switch (type) {
@@ -134,7 +190,7 @@ export default function ProviderDashboard() {
         router.push('/(provider)/(tabs)/schedule?filter=completed');
         break;
       case 'revenue':
-        router.push('/(provider)/money');
+        router.push('/(provider)/money-home');
         break;
       case 'upcoming':
         router.push('/(provider)/(tabs)/schedule');
@@ -148,10 +204,10 @@ export default function ProviderDashboard() {
         router.push('/(provider)/settings/payment');
         break;
       case 'service':
-        router.push('/(provider)/services/add');
+        router.push('/(provider)/business-profile');
         break;
       case 'clients':
-        router.push('/(provider)/clients/import-csv');
+        router.push('/(provider)/clients/add');
         break;
     }
   };
@@ -165,11 +221,68 @@ export default function ProviderDashboard() {
     { key: 'clients', label: 'Import clients', completed: setupTasks.hasEnoughClients },
   ].filter(task => !task.completed);
 
+  // Task 2.2: Loading state with skeleton
+  if (loading && !refreshing) {
+    return (
+      <View style={[commonStyles.container, styles.centerContainer]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      </View>
+    );
+  }
+
+  // Task 2.2: Error state with retry button
+  if (error && !refreshing) {
+    return (
+      <View style={[commonStyles.container, styles.centerContainer]}>
+        <GlassView style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={64}
+            color={colors.error}
+          />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadDashboardData}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </GlassView>
+      </View>
+    );
+  }
+
+  // Task 4.2: Check for missing organization
+  if (!organization) {
+    return (
+      <View style={[commonStyles.container, styles.centerContainer]}>
+        <GlassView style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="building.2"
+            android_material_icon_name="business"
+            size={64}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.errorText}>No organization found</Text>
+          <Text style={styles.errorSubtext}>Please complete your provider onboarding</Text>
+          <TouchableOpacity 
+            style={styles.retryButton} 
+            onPress={() => router.push('/(provider)/onboarding/business-basics')}
+          >
+            <Text style={styles.retryButtonText}>Start Onboarding</Text>
+          </TouchableOpacity>
+        </GlassView>
+      </View>
+    );
+  }
+
   return (
     <ScrollView 
       style={commonStyles.container} 
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+      }
     >
       {/* Header */}
       <View style={styles.header}>
@@ -343,7 +456,7 @@ export default function ProviderDashboard() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Unpaid Invoices</Text>
-          <TouchableOpacity onPress={() => router.push('/(provider)/money?tab=invoices')}>
+          <TouchableOpacity onPress={() => router.push('/(provider)/money-home')}>
             <Text style={styles.seeAll}>See All</Text>
           </TouchableOpacity>
         </View>
@@ -434,6 +547,50 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
     paddingBottom: 140,
+  },
+  centerContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 16,
+    fontFamily: 'Inter',
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+    width: '100%',
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.error,
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+    fontFamily: 'Inter',
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 24,
+    textAlign: 'center',
+    fontFamily: 'Inter',
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    fontFamily: 'Inter',
   },
   header: {
     flexDirection: 'row',

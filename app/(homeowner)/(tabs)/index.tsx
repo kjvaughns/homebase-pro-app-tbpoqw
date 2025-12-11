@@ -1,20 +1,131 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { router } from 'expo-router';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { BookingCard } from '@/components/BookingCard';
 import { useAuth } from '@/contexts/AuthContext';
-import { mockBookings, mockProviders } from '@/data/mockData';
 import { IconSymbol } from '@/components/IconSymbol';
+import { GlassView } from '@/components/GlassView';
+import { supabase } from '@/app/integrations/supabase/client';
+
+interface Booking {
+  id: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  service_name: string;
+  status: string;
+  organization_id: string;
+  organizations?: {
+    business_name: string;
+  };
+}
 
 export default function HomeownerDashboard() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
-  const upcomingBookings = mockBookings.filter(b => b.date >= new Date());
+  // Task 2.1 & 2.3: Wrap in try/catch/finally, memoize with useCallback
+  const loadDashboardData = useCallback(async () => {
+    if (!profile?.id) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setError(null);
+      console.log('Homeowner Dashboard: Loading data for profile:', profile.id);
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // Task 3.1 & 3.2: Add limits and use parallel queries
+      const { data: bookingsData, error: bookingsError } = await supabase
+        .from('bookings')
+        .select('*, organizations(business_name)')
+        .eq('homeowner_id', profile.id)
+        .gte('scheduled_date', today)
+        .order('scheduled_date', { ascending: true })
+        .order('scheduled_time', { ascending: true })
+        .limit(10);
+
+      // Task 3.3: Handle errors explicitly
+      if (bookingsError) {
+        console.error('Homeowner Dashboard: Bookings error:', bookingsError);
+        throw bookingsError;
+      }
+
+      setBookings(bookingsData || []);
+      console.log('Homeowner Dashboard: Loaded', bookingsData?.length || 0, 'bookings');
+    } catch (error: any) {
+      console.error('Homeowner Dashboard: Error loading data:', error);
+      setError(error.message || 'Failed to load dashboard data');
+    } finally {
+      // Task 2.1: Always reset loading in finally
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [profile?.id]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!loading) {
+        loadDashboardData();
+      }
+    }, [loadDashboardData, loading])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadDashboardData();
+  }, [loadDashboardData]);
+
+  const upcomingBookings = bookings.filter(b => b.status !== 'cancelled' && b.status !== 'completed');
+
+  // Task 2.2: Loading state
+  if (loading && !refreshing) {
+    return (
+      <View style={[commonStyles.container, styles.centerContainer]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      </View>
+    );
+  }
+
+  // Task 2.2: Error state with retry
+  if (error && !refreshing) {
+    return (
+      <View style={[commonStyles.container, styles.centerContainer]}>
+        <GlassView style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={64}
+            color={colors.error}
+          />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadDashboardData}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </GlassView>
+      </View>
+    );
+  }
 
   return (
-    <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
+    <ScrollView 
+      style={commonStyles.container} 
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+      }
+    >
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Hello,</Text>
@@ -72,11 +183,22 @@ export default function HomeownerDashboard() {
         </View>
         {upcomingBookings.length > 0 ? (
           upcomingBookings.slice(0, 2).map((booking, index) => (
-            <BookingCard
-              key={index}
-              booking={booking}
-              providerName={mockProviders.find(p => p.id === booking.providerId)?.businessName}
-            />
+            <GlassView key={index} style={styles.bookingCard}>
+              <View style={styles.bookingHeader}>
+                <Text style={styles.bookingDate}>
+                  {new Date(booking.scheduled_date).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                </Text>
+                <Text style={styles.bookingTime}>{booking.scheduled_time}</Text>
+              </View>
+              <Text style={styles.bookingService}>{booking.service_name}</Text>
+              <Text style={styles.bookingProvider}>
+                {booking.organizations?.business_name || 'Provider'}
+              </Text>
+            </GlassView>
           ))
         ) : (
           <View style={[commonStyles.glassCard, styles.emptyState]}>
@@ -96,36 +218,6 @@ export default function HomeownerDashboard() {
           </View>
         )}
       </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>My Providers</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.providers}>
-          {mockProviders.slice(0, 3).map((provider, index) => (
-            <TouchableOpacity key={index} style={[commonStyles.glassCard, styles.providerCard]}>
-              <View style={styles.providerAvatar}>
-                <IconSymbol
-                  ios_icon_name="person.fill"
-                  android_material_icon_name="person"
-                  size={24}
-                  color={colors.primary}
-                />
-              </View>
-              <Text style={styles.providerName} numberOfLines={1}>
-                {provider.businessName}
-              </Text>
-              <View style={styles.providerRating}>
-                <IconSymbol
-                  ios_icon_name="star.fill"
-                  android_material_icon_name="star"
-                  size={12}
-                  color={colors.primary}
-                />
-                <Text style={styles.providerRatingText}>{provider.rating}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
     </ScrollView>
   );
 }
@@ -134,6 +226,40 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 60,
     paddingBottom: 100,
+  },
+  centerContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 16,
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+    width: '100%',
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.error,
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
   },
   header: {
     flexDirection: 'row',
@@ -224,6 +350,36 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
   },
+  bookingCard: {
+    padding: 16,
+    marginHorizontal: 20,
+    marginBottom: 12,
+  },
+  bookingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  bookingDate: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  bookingTime: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  bookingService: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  bookingProvider: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
   emptyState: {
     padding: 32,
     alignItems: 'center',
@@ -245,40 +401,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
-  },
-  providers: {
-    paddingLeft: 20,
-  },
-  providerCard: {
-    width: 120,
-    padding: 16,
-    marginRight: 12,
-    alignItems: 'center',
-  },
-  providerAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  providerName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  providerRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  providerRatingText: {
-    fontSize: 12,
-    color: colors.text,
-    fontWeight: '600',
   },
 });
