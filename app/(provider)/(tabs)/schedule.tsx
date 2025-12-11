@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl, ActivityIndicator } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -20,17 +20,18 @@ export default function ScheduleScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadBookings();
-  }, [selectedDate, viewMode]);
-
-  const loadBookings = async () => {
+  const loadBookings = useCallback(async () => {
     if (!organization?.id) return;
     
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      setError(null);
+      
+      // Fix 4.2: Include blocked bookings in query
+      const { data, error: fetchError } = await supabase
         .from('bookings')
         .select('*, clients(name, email, phone)')
         .eq('organization_id', organization.id)
@@ -39,14 +40,32 @@ export default function ScheduleScreen() {
         .order('scheduled_date')
         .order('scheduled_time');
 
-      if (error) throw error;
+      if (fetchError) throw fetchError;
       setBookings(data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading bookings:', error);
+      setError(error.message || 'Failed to load bookings');
     } finally {
       setLoading(false);
     }
-  };
+  }, [organization?.id, selectedDate, viewMode]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadBookings();
+    setRefreshing(false);
+  }, [loadBookings]);
+
+  useEffect(() => {
+    loadBookings();
+  }, [loadBookings]);
+
+  // Reload bookings when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadBookings();
+    }, [loadBookings])
+  );
 
   const getStartDate = () => {
     const date = new Date(selectedDate);
@@ -143,17 +162,65 @@ export default function ScheduleScreen() {
   };
 
   const renderListView = () => {
-    const upcomingBookings = bookings.filter(b => b.status !== 'cancelled' && b.status !== 'blocked');
+    // Fix 4.2: Show all bookings including blocked ones
+    const upcomingBookings = bookings.filter(b => b.status !== 'cancelled');
+
+    // Fix 5.3: Add loading state
+    if (loading && bookings.length === 0) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading schedule...</Text>
+        </View>
+      );
+    }
+
+    // Fix 5.3: Add error state
+    if (error) {
+      return (
+        <GlassView style={styles.errorState}>
+          <IconSymbol ios_icon_name="exclamationmark.triangle" android_material_icon_name="error" size={64} color={colors.error} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadBookings}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </GlassView>
+      );
+    }
+
+    // Fix 5.3: Add empty state
+    if (upcomingBookings.length === 0) {
+      return (
+        <GlassView style={styles.emptyState}>
+          <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={64} color={colors.textSecondary} />
+          <Text style={styles.emptyText}>No upcoming jobs</Text>
+          <TouchableOpacity 
+            style={styles.emptyButton}
+            onPress={() => router.push('/(provider)/schedule/create-job')}
+          >
+            <Text style={styles.emptyButtonText}>Create Job</Text>
+          </TouchableOpacity>
+        </GlassView>
+      );
+    }
 
     return (
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-        {upcomingBookings.length > 0 ? (
-          upcomingBookings.map((booking, index) => (
+        {upcomingBookings.map((booking, index) => (
+          <React.Fragment key={index}>
+            {/* Fix 5.2: Make jobs tappable */}
             <TouchableOpacity 
-              key={index}
-              onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
+              onPress={() => {
+                if (booking.status !== 'blocked') {
+                  router.push(`/(provider)/schedule/${booking.id}`);
+                }
+              }}
             >
-              <GlassView style={styles.jobCard}>
+              <GlassView style={[
+                styles.jobCard,
+                // Fix 4.2: Visually differentiate blocked bookings
+                booking.status === 'blocked' && styles.blockedJobCard
+              ]}>
                 <View style={styles.jobHeader}>
                   <View style={styles.dateTimeContainer}>
                     <Text style={styles.jobDate}>
@@ -164,45 +231,46 @@ export default function ScheduleScreen() {
                       })}
                     </Text>
                     <View style={styles.timeContainer}>
-                      <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={16} color={colors.primary} />
+                      <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={16} color={booking.status === 'blocked' ? colors.textSecondary : colors.primary} />
                       <Text style={styles.jobTime}>{booking.scheduled_time}</Text>
+                      {booking.end_time && (
+                        <Text style={styles.jobTime}> - {booking.end_time}</Text>
+                      )}
                     </View>
                   </View>
                   <View style={[styles.statusBadge, { backgroundColor: getStatusColor(booking.status) + '20' }]}>
                     <Text style={[styles.statusText, { color: getStatusColor(booking.status) }]}>
-                      {booking.status.replace('_', ' ')}
+                      {booking.status === 'blocked' ? 'Blocked' : booking.status.replace('_', ' ')}
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.jobService}>{booking.service_name}</Text>
-                <View style={styles.jobDetails}>
-                  <View style={styles.jobDetail}>
-                    <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={16} color={colors.textSecondary} />
-                    <Text style={styles.jobDetailText}>{booking.clients?.name || 'Unknown'}</Text>
-                  </View>
-                  <View style={styles.jobDetail}>
-                    <IconSymbol ios_icon_name="location.fill" android_material_icon_name="location-on" size={16} color={colors.textSecondary} />
-                    <Text style={styles.jobDetailText} numberOfLines={1}>{booking.address}</Text>
-                  </View>
-                </View>
-                {booking.price && (
-                  <Text style={styles.jobPrice}>${booking.price}</Text>
+                <Text style={[styles.jobService, booking.status === 'blocked' && styles.blockedText]}>
+                  {booking.service_name}
+                </Text>
+                {booking.status !== 'blocked' && (
+                  <React.Fragment>
+                    <View style={styles.jobDetails}>
+                      <View style={styles.jobDetail}>
+                        <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={16} color={colors.textSecondary} />
+                        <Text style={styles.jobDetailText}>{booking.clients?.name || 'Unknown'}</Text>
+                      </View>
+                      <View style={styles.jobDetail}>
+                        <IconSymbol ios_icon_name="location.fill" android_material_icon_name="location-on" size={16} color={colors.textSecondary} />
+                        <Text style={styles.jobDetailText} numberOfLines={1}>{booking.address}</Text>
+                      </View>
+                    </View>
+                    {booking.price && (
+                      <Text style={styles.jobPrice}>${booking.price}</Text>
+                    )}
+                  </React.Fragment>
+                )}
+                {booking.status === 'blocked' && booking.notes && (
+                  <Text style={styles.blockedNotes}>{booking.notes}</Text>
                 )}
               </GlassView>
             </TouchableOpacity>
-          ))
-        ) : (
-          <GlassView style={styles.emptyState}>
-            <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={64} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>No upcoming jobs</Text>
-            <TouchableOpacity 
-              style={styles.emptyButton}
-              onPress={() => router.push('/(provider)/schedule/create-job')}
-            >
-              <Text style={styles.emptyButtonText}>Create Job</Text>
-            </TouchableOpacity>
-          </GlassView>
-        )}
+          </React.Fragment>
+        ))}
       </ScrollView>
     );
   };
@@ -235,12 +303,27 @@ export default function ScheduleScreen() {
                   {hourBookings.map((booking, index) => (
                     <TouchableOpacity
                       key={index}
-                      onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
+                      onPress={() => {
+                        if (booking.status !== 'blocked') {
+                          router.push(`/(provider)/schedule/${booking.id}`);
+                        }
+                      }}
                     >
-                      <GlassView style={[styles.bookingBlock, { borderLeftColor: getStatusColor(booking.status) }]}>
+                      <GlassView style={[
+                        styles.bookingBlock, 
+                        { borderLeftColor: getStatusColor(booking.status) },
+                        booking.status === 'blocked' && styles.blockedBookingBlock
+                      ]}>
                         <Text style={styles.bookingTime}>{booking.scheduled_time}</Text>
-                        <Text style={styles.bookingService}>{booking.service_name}</Text>
-                        <Text style={styles.bookingClient}>{booking.clients?.name || 'Unknown'}</Text>
+                        <Text style={[styles.bookingService, booking.status === 'blocked' && styles.blockedText]}>
+                          {booking.service_name}
+                        </Text>
+                        {booking.status !== 'blocked' && (
+                          <Text style={styles.bookingClient}>{booking.clients?.name || 'Unknown'}</Text>
+                        )}
+                        {booking.status === 'blocked' && (
+                          <Text style={styles.blockedLabel}>BLOCKED</Text>
+                        )}
                       </GlassView>
                     </TouchableOpacity>
                   ))}
@@ -328,19 +411,27 @@ export default function ScheduleScreen() {
             .map((booking, index) => (
               <TouchableOpacity
                 key={index}
-                onPress={() => router.push(`/(provider)/schedule/${booking.id}`)}
+                onPress={() => {
+                  if (booking.status !== 'blocked') {
+                    router.push(`/(provider)/schedule/${booking.id}`);
+                  }
+                }}
               >
-                <GlassView style={styles.weekJobCard}>
+                <GlassView style={[styles.weekJobCard, booking.status === 'blocked' && styles.blockedJobCard]}>
                   <View style={styles.weekJobHeader}>
                     <Text style={styles.weekJobTime}>{booking.scheduled_time}</Text>
                     <View style={[styles.weekJobStatus, { backgroundColor: getStatusColor(booking.status) + '20' }]}>
                       <Text style={[styles.weekJobStatusText, { color: getStatusColor(booking.status) }]}>
-                        {booking.status}
+                        {booking.status === 'blocked' ? 'Blocked' : booking.status}
                       </Text>
                     </View>
                   </View>
-                  <Text style={styles.weekJobService}>{booking.service_name}</Text>
-                  <Text style={styles.weekJobClient}>{booking.clients?.name || 'Unknown'}</Text>
+                  <Text style={[styles.weekJobService, booking.status === 'blocked' && styles.blockedText]}>
+                    {booking.service_name}
+                  </Text>
+                  {booking.status !== 'blocked' && (
+                    <Text style={styles.weekJobClient}>{booking.clients?.name || 'Unknown'}</Text>
+                  )}
                 </GlassView>
               </TouchableOpacity>
             ))}
@@ -431,6 +522,9 @@ export default function ScheduleScreen() {
       <ScrollView 
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
       >
         <View style={styles.header}>
           <Text style={styles.title}>Schedule</Text>
@@ -494,12 +588,16 @@ export default function ScheduleScreen() {
             <IconSymbol ios_icon_name="xmark.circle" android_material_icon_name="block" size={18} color={colors.text} />
             <Text style={styles.quickActionText}>Block Time</Text>
           </TouchableOpacity>
+          {/* Fix 5.1: Create job button with date passing */}
           <TouchableOpacity 
             style={styles.quickActionButton}
-            onPress={() => console.log('Sync Calendar - Coming soon')}
+            onPress={() => {
+              const dateParam = selectedDate.toISOString().split('T')[0];
+              router.push(`/(provider)/schedule/create-job?date=${dateParam}`);
+            }}
           >
-            <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={18} color={colors.text} />
-            <Text style={styles.quickActionText}>Sync Calendar</Text>
+            <IconSymbol ios_icon_name="plus.circle" android_material_icon_name="add-circle" size={18} color={colors.text} />
+            <Text style={styles.quickActionText}>Create Job</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -578,6 +676,11 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
   },
+  blockedJobCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 1,
+    borderColor: colors.textSecondary + '40',
+  },
   jobHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -619,6 +722,22 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 12,
   },
+  blockedText: {
+    color: colors.textSecondary,
+  },
+  blockedNotes: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: 8,
+  },
+  blockedLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
   jobDetails: {
     gap: 8,
     marginBottom: 12,
@@ -637,6 +756,37 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: colors.primary,
+  },
+  loadingContainer: {
+    padding: 48,
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 16,
+  },
+  errorState: {
+    padding: 48,
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: colors.error,
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
   },
   emptyState: {
     padding: 48,
@@ -706,6 +856,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 4,
     borderLeftWidth: 4,
+  },
+  blockedBookingBlock: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
   },
   bookingTime: {
     fontSize: 12,

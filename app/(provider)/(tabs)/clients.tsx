@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -16,12 +16,9 @@ export default function ClientsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'lead' | 'active' | 'inactive'>('all');
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadClients();
-  }, [organization?.id]);
-
-  const loadClients = async () => {
+  const loadClients = useCallback(async () => {
     if (!organization?.id) return;
     
     try {
@@ -39,7 +36,24 @@ export default function ClientsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [organization?.id]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadClients();
+    setRefreshing(false);
+  }, [loadClients]);
+
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
+
+  // Fix 1.4: Reload clients when screen comes into focus (after adding a client)
+  useFocusEffect(
+    useCallback(() => {
+      loadClients();
+    }, [loadClients])
+  );
 
   const filteredClients = clients.filter(client => {
     const matchesSearch = client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -76,7 +90,13 @@ export default function ClientsScreen() {
 
   return (
     <View style={commonStyles.container}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+      >
         <View style={styles.header}>
           <Text style={styles.title}>Clients</Text>
         </View>

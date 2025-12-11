@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,9 @@ import {
   TouchableOpacity,
   TextInput,
   Platform,
-  Modal,
+  Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -24,6 +24,7 @@ type ClientMode = 'existing' | 'new' | null;
 
 export default function CreateJobScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { organization } = useAuth();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -35,6 +36,9 @@ export default function CreateJobScreen() {
   const [clientMode, setClientMode] = useState<ClientMode>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Fix 5.1: Accept preselected date from params
+  const preselectedDate = params.date ? new Date(params.date as string) : new Date();
+
   const [formData, setFormData] = useState({
     client_id: '',
     client_name: '',
@@ -42,7 +46,7 @@ export default function CreateJobScreen() {
     client_phone: '',
     client_address: '',
     service_id: '',
-    scheduled_date: new Date(),
+    scheduled_date: preselectedDate,
     scheduled_time: '09:00',
     end_time: '10:00',
     address: '',
@@ -50,32 +54,35 @@ export default function CreateJobScreen() {
     price: '',
   });
 
-  useEffect(() => {
-    loadClientsAndServices();
-  }, []);
+  const loadClientsAndServices = useCallback(async () => {
+    if (!organization?.id) return;
 
-  const loadClientsAndServices = async () => {
     try {
       const [clientsRes, servicesRes] = await Promise.all([
         supabase
           .from('clients')
           .select('*')
-          .eq('organization_id', organization?.id)
+          .eq('organization_id', organization.id)
           .order('name'),
         supabase
           .from('services')
           .select('*')
-          .eq('organization_id', organization?.id)
+          .eq('organization_id', organization.id)
           .eq('is_active', true)
           .order('name'),
       ]);
 
       if (clientsRes.data) setClients(clientsRes.data);
+      // Fix 2.1: Load services for the current organization
       if (servicesRes.data) setServices(servicesRes.data);
     } catch (error) {
       console.error('Error loading data:', error);
     }
-  };
+  }, [organization?.id]);
+
+  useEffect(() => {
+    loadClientsAndServices();
+  }, [loadClientsAndServices]);
 
   const handleSave = async () => {
     // Validation
@@ -101,7 +108,7 @@ export default function CreateJobScreen() {
 
       let clientId = formData.client_id;
 
-      // Create new client if needed
+      // Fix 3.3: Create new client if needed
       if (clientMode === 'new') {
         const { data: newClient, error: clientError } = await supabase
           .from('clients')
@@ -273,6 +280,7 @@ export default function CreateJobScreen() {
                       formData.client_id === client.id && styles.clientItemSelected,
                     ]}
                     onPress={() => {
+                      // Fix 3.2: Auto-fill address from client
                       setFormData({
                         ...formData,
                         client_id: client.id,
@@ -347,35 +355,56 @@ export default function CreateJobScreen() {
           <Text style={styles.sectionTitle}>Job Details</Text>
 
           <Text style={styles.label}>Service *</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-            {services.map((service) => (
-              <TouchableOpacity
-                key={service.id}
-                style={[
-                  styles.chip,
-                  formData.service_id === service.id && styles.chipSelected,
-                ]}
-                onPress={() =>
-                  setFormData({
-                    ...formData,
-                    service_id: service.id,
-                    price: service.price_min?.toString() || '',
-                  })
-                }
-              >
-                <Text
+          {/* Fix 2.2: Show services as selectable chips or empty state */}
+          {services.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+              {services.map((service) => (
+                <TouchableOpacity
+                  key={service.id}
                   style={[
-                    styles.chipText,
-                    formData.service_id === service.id && styles.chipTextSelected,
+                    styles.chip,
+                    formData.service_id === service.id && styles.chipSelected,
                   ]}
+                  onPress={() => {
+                    // Fix 2.3: Set both service_id and default price
+                    setFormData({
+                      ...formData,
+                      service_id: service.id,
+                      price: service.price_min?.toString() || '',
+                    });
+                  }}
                 >
-                  {service.name}
-                </Text>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      formData.service_id === service.id && styles.chipTextSelected,
+                    ]}
+                  >
+                    {service.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <GlassView style={styles.emptyServiceState}>
+              <IconSymbol 
+                ios_icon_name="wrench.and.screwdriver" 
+                android_material_icon_name="build" 
+                size={48} 
+                color={colors.textSecondary} 
+              />
+              <Text style={styles.emptyServiceText}>No services yet</Text>
+              <TouchableOpacity
+                style={styles.addServiceButton}
+                onPress={() => router.push('/(provider)/business-profile')}
+              >
+                <Text style={styles.addServiceButtonText}>Add First Service</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            </GlassView>
+          )}
 
           <Text style={styles.label}>Date *</Text>
+          {/* Fix 3.1: Date picker opens on tap */}
           <TouchableOpacity
             style={styles.input}
             onPress={() => setShowDatePicker(true)}
@@ -404,6 +433,7 @@ export default function CreateJobScreen() {
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Start Time *</Text>
+              {/* Fix 3.1: Time picker opens on tap */}
               <TouchableOpacity
                 style={styles.input}
                 onPress={() => setShowStartTimePicker(true)}
@@ -648,6 +678,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   chipTextSelected: {
+    color: colors.text,
+  },
+  emptyServiceState: {
+    padding: 32,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emptyServiceText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  addServiceButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  addServiceButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.text,
   },
   clientList: {

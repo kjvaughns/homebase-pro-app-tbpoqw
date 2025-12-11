@@ -29,6 +29,12 @@ export default function AddClientScreen() {
   });
 
   const handleSave = async () => {
+    // Fix 1.1: Check organization is required
+    if (!organization?.id) {
+      Alert.alert('Error', 'Organization not found. Please try logging in again.');
+      return;
+    }
+
     if (!formData.name) {
       Alert.alert('Missing Information', 'Please enter a client name');
       return;
@@ -37,8 +43,9 @@ export default function AddClientScreen() {
     try {
       setLoading(true);
 
+      // Fix 1.2: Confirm insert matches schema with organization_id not null
       const { error } = await supabase.from('clients').insert({
-        organization_id: organization?.id,
+        organization_id: organization.id,
         name: formData.name,
         email: formData.email || null,
         phone: formData.phone || null,
@@ -51,13 +58,21 @@ export default function AddClientScreen() {
 
       if (error) throw error;
 
+      // Fix 1.4: Show success toast/alert
       Alert.alert('Success', 'Client added successfully', [
-        { text: 'OK', onPress: () => router.back() },
+        { 
+          text: 'OK', 
+          onPress: () => {
+            // Navigate back and trigger refresh
+            router.back();
+          }
+        },
       ]);
     } catch (error: any) {
       console.error('Error adding client:', error);
       Alert.alert('Error', error.message || 'Failed to add client');
     } finally {
+      // Fix 1.3: Always clear loading state in finally
       setLoading(false);
     }
   };

@@ -35,11 +35,17 @@ export default function BlockTimeScreen() {
   });
 
   const handleSave = async () => {
+    if (!organization?.id) {
+      showToast('Organization not found', 'error');
+      return;
+    }
+
     try {
       setLoading(true);
 
+      // Fix 4.1: Write blocked time with correct fields
       const { error } = await supabase.from('bookings').insert({
-        organization_id: organization?.id,
+        organization_id: organization.id,
         service_name: 'Blocked Time',
         scheduled_date: formData.scheduled_date.toISOString().split('T')[0],
         scheduled_time: formData.scheduled_time,
