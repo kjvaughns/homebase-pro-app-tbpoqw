@@ -376,9 +376,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const switchProfile = async (targetRole: UserRole) => {
+    console.log('=== AUTH CONTEXT: SWITCH PROFILE START ===');
+    console.log('Current profile:', profile);
+    console.log('Current session:', session?.user?.id);
+    console.log('Target role:', targetRole);
+
+    // Guard: Check for valid profile and session
     if (!profile || !session) {
       console.error('AuthContext: No profile or session available');
-      Alert.alert('Error', 'Unable to switch profile. Please try logging in again.');
+      Alert.alert(
+        'Error',
+        'Unable to switch profile. Please try logging in again.',
+        [{ text: 'OK' }]
+      );
       return;
     }
 
@@ -390,20 +400,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      console.log('=== AUTH CONTEXT: SWITCH PROFILE START ===');
-      console.log('Current role:', profile.role);
-      console.log('Target role:', targetRole);
-      
+      // If already on target role, just navigate
       if (profile.role === targetRole) {
         console.log('AuthContext: Already on target role, navigating...');
-        if (targetRole === 'provider') {
-          router.replace('/(provider)/(tabs)');
-        } else {
-          router.replace('/(homeowner)/(tabs)');
-        }
+        const targetRoute = targetRole === 'provider' ? '/(provider)/(tabs)' : '/(homeowner)/(tabs)';
+        router.replace(targetRoute);
         return;
       }
 
+      // Switching to provider
       if (targetRole === 'provider') {
         console.log('AuthContext: Switching to provider...');
         
@@ -419,6 +424,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (!existingOrg) {
+          // No provider account exists - prompt to create
           Alert.alert(
             'Create Provider Account',
             'You don\'t have a provider account yet. Would you like to create one?',
@@ -428,6 +434,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 text: 'Create Account',
                 onPress: async () => {
                   try {
+                    // Update role in Supabase
                     const { error: roleError } = await supabase
                       .from('profiles')
                       .update({ role: 'provider', updated_at: new Date().toISOString() })
@@ -435,8 +442,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                     if (roleError) throw roleError;
 
+                    // Store role in AsyncStorage
                     await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'provider');
 
+                    // Create organization
                     const { error: orgError } = await supabase
                       .from('organizations')
                       .insert({
@@ -447,9 +456,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                     if (orgError) throw orgError;
 
+                    // Reload user data
                     await loadUserData(session.user.id);
-                    router.replace('/(provider)/onboarding/business-basics');
+                    
+                    // Small delay to prevent race conditions
                     await new Promise(resolve => setTimeout(resolve, 150));
+                    
+                    // Navigate to onboarding
+                    router.replace('/(provider)/onboarding/business-basics');
                   } catch (error: any) {
                     console.error('AuthContext: Error creating provider account:', error);
                     Alert.alert('Error', 'Failed to create provider account. Please try again.');
@@ -460,6 +474,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
           return;
         } else if (!existingOrg.onboarding_completed) {
+          // Provider account exists but onboarding not complete
           Alert.alert(
             'Complete Onboarding',
             'Please complete your provider onboarding first.',
@@ -467,6 +482,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               text: 'Continue',
               onPress: async () => {
                 try {
+                  // Update role
                   const { error: roleError } = await supabase
                     .from('profiles')
                     .update({ role: 'provider', updated_at: new Date().toISOString() })
@@ -476,8 +492,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                   await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'provider');
                   await loadUserData(session.user.id);
-                  router.replace('/(provider)/onboarding/business-basics');
                   await new Promise(resolve => setTimeout(resolve, 150));
+                  router.replace('/(provider)/onboarding/business-basics');
                 } catch (error: any) {
                   console.error('AuthContext: Error switching to provider:', error);
                   Alert.alert('Error', 'Failed to switch profile. Please try again.');
@@ -489,12 +505,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (targetRole === 'homeowner') {
-        console.log('AuthContext: Switching to homeowner...');
-      }
-
-      // Switch role directly
+      // Switching to homeowner (or provider with completed onboarding)
       console.log('AuthContext: Switching role directly...');
+      
+      // Update role in Supabase
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ role: targetRole, updated_at: new Date().toISOString() })
@@ -505,17 +519,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw updateError;
       }
 
+      // Store role in AsyncStorage
       await AsyncStorage.setItem(ROLE_STORAGE_KEY, targetRole);
+      
+      // Reload user data
       await loadUserData(session.user.id);
       
-      if (targetRole === 'provider') {
-        router.replace('/(provider)/(tabs)');
-      } else {
-        router.replace('/(homeowner)/(tabs)');
-      }
-
+      // Small delay to prevent race conditions
       await new Promise(resolve => setTimeout(resolve, 150));
+      
+      // Navigate to appropriate dashboard
+      const targetRoute = targetRole === 'provider' ? '/(provider)/(tabs)' : '/(homeowner)/(tabs)';
+      router.replace(targetRoute);
 
+      // Show success message
       Alert.alert(
         'Profile Switched',
         `You are now using your ${targetRole} profile.`,

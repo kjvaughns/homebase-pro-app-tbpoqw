@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Alert } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -16,6 +16,7 @@ export function AccountSwitcherDropdown({ visible, onClose }: AccountSwitcherDro
   const { profile, switchProfile } = useAuth();
   const [hasHomeownerProfile, setHasHomeownerProfile] = useState(false);
   const [hasProviderProfile, setHasProviderProfile] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const fadeAnim = useState(new Animated.Value(0))[0];
 
   const checkHomeownerProfile = useCallback(async () => {
@@ -60,9 +61,26 @@ export function AccountSwitcherDropdown({ visible, onClose }: AccountSwitcherDro
     }
   }, [visible, fadeAnim, checkHomeownerProfile, checkProviderProfile]);
 
-  const handleSwitch = async (role: 'provider' | 'homeowner') => {
-    onClose();
-    await switchProfile(role);
+  const handleSwitch = async (targetRole: 'provider' | 'homeowner') => {
+    if (switching) return;
+    
+    try {
+      setSwitching(true);
+      console.log('AccountSwitcher: Switching to', targetRole);
+      
+      // Close modal immediately for better UX
+      onClose();
+      
+      // Call switchProfile from AuthContext
+      await switchProfile(targetRole);
+      
+      console.log('AccountSwitcher: Switch completed');
+    } catch (err: any) {
+      console.error('AccountSwitcher: Switch failed:', err);
+      Alert.alert('Switch Failed', err?.message || 'Please try again.');
+    } finally {
+      setSwitching(false);
+    }
   };
 
   if (!visible) return null;
@@ -90,6 +108,7 @@ export function AccountSwitcherDropdown({ visible, onClose }: AccountSwitcherDro
                   profile?.role === 'provider' && styles.activeOption,
                 ]}
                 onPress={() => handleSwitch('provider')}
+                disabled={switching}
               >
                 <View style={styles.optionLeft}>
                   <IconSymbol 
@@ -113,7 +132,7 @@ export function AccountSwitcherDropdown({ visible, onClose }: AccountSwitcherDro
                 {profile?.role === 'provider' && (
                   <IconSymbol 
                     ios_icon_name="checkmark.circle.fill" 
-                    android_material_icon_name="check-circle" 
+                    android_material_icon_name="check_circle" 
                     size={24} 
                     color={colors.primary} 
                   />
@@ -126,6 +145,7 @@ export function AccountSwitcherDropdown({ visible, onClose }: AccountSwitcherDro
                   profile?.role === 'homeowner' && styles.activeOption,
                 ]}
                 onPress={() => handleSwitch('homeowner')}
+                disabled={switching}
               >
                 <View style={styles.optionLeft}>
                   <IconSymbol 
@@ -149,7 +169,7 @@ export function AccountSwitcherDropdown({ visible, onClose }: AccountSwitcherDro
                 {profile?.role === 'homeowner' && (
                   <IconSymbol 
                     ios_icon_name="checkmark.circle.fill" 
-                    android_material_icon_name="check-circle" 
+                    android_material_icon_name="check_circle" 
                     size={24} 
                     color={colors.primary} 
                   />

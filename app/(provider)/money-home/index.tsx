@@ -30,6 +30,7 @@ export default function MoneyHomeScreen() {
   const { organization } = useAuth();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [financials, setFinancials] = useState<FinancialData | null>(null);
 
   useEffect(() => {
@@ -37,18 +38,30 @@ export default function MoneyHomeScreen() {
   }, [organization]);
 
   const loadFinancials = async () => {
-    if (!organization) return;
+    if (!organization) {
+      console.log('MoneyHome: No organization found');
+      setLoading(false);
+      setError('No organization found');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
 
     try {
-      setLoading(true);
+      console.log('MoneyHome: Loading financials for organization:', organization.id);
       const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error('No active session');
+      }
 
       const response = await fetch(
         `https://qjuilxfvqvmoqykpdugi.supabase.co/functions/v1/provider-financials`,
         {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${session?.access_token}`,
+            Authorization: `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -58,10 +71,16 @@ export default function MoneyHomeScreen() {
         }
       );
 
+      if (!response.ok) {
+        throw new Error(`Failed to load financials: ${response.status}`);
+      }
+
       const result = await response.json();
+      console.log('MoneyHome: Financials loaded successfully');
       setFinancials(result);
-    } catch (error) {
-      console.error('Error loading financials:', error);
+    } catch (error: any) {
+      console.error('MoneyHome: Error loading financials:', error);
+      setError(error.message || 'Failed to load financial data');
       showToast('Failed to load financial data', 'error');
     } finally {
       setLoading(false);
@@ -77,6 +96,35 @@ export default function MoneyHomeScreen() {
       <View style={[commonStyles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading Money Hub...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[commonStyles.container, styles.centerContent]}>
+        <GlassView style={styles.errorCard}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.circle.fill"
+            android_material_icon_name="error"
+            size={48}
+            color={colors.error}
+          />
+          <Text style={styles.errorTitle}>Unable to Load Data</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity
+            style={styles.errorButton}
+            onPress={loadFinancials}
+          >
+            <Text style={styles.errorButtonText}>Try Again</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.secondaryButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </GlassView>
       </View>
     );
   }
@@ -328,6 +376,7 @@ const styles = StyleSheet.create({
   centerContent: {
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
   header: {
     flexDirection: 'row',
@@ -347,6 +396,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     marginTop: 12,
+  },
+  errorCard: {
+    padding: 32,
+    alignItems: 'center',
+    maxWidth: 400,
+  },
+  errorTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  errorButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+    width: '100%',
+  },
+  errorButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  secondaryButton: {
+    backgroundColor: colors.glass,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    width: '100%',
+  },
+  secondaryButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   section: {
     marginBottom: 32,

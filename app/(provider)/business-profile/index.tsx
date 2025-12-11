@@ -19,6 +19,7 @@ import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
 import { useToast } from '@/contexts/ToastContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface BusinessProfile {
   id?: string;
@@ -62,8 +63,10 @@ interface BusinessProfile {
 export default function BusinessProfileEditor() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { organization: authOrganization } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<BusinessProfile>({
     services_visible: true,
     is_published: false,
@@ -83,24 +86,38 @@ export default function BusinessProfileEditor() {
   const lastSavedRef = useRef<string>('');
 
   const loadProfile = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
+        console.error('BusinessProfile: No user found');
         router.replace('/auth/login');
         return;
       }
+
+      console.log('BusinessProfile: Loading organization for user:', user.id);
 
       const { data: org, error: orgError } = await supabase
         .from('organizations')
         .select('id')
         .eq('owner_id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (orgError || !org) {
-        showToast('Organization not found', 'error');
+      if (orgError) {
+        console.error('BusinessProfile: Error loading organization:', orgError);
+        setError('Failed to load organization');
         return;
       }
 
+      if (!org) {
+        console.log('BusinessProfile: No organization found');
+        setError('no_organization');
+        return;
+      }
+
+      console.log('BusinessProfile: Organization found:', org.id);
       setOrganizationId(org.id);
 
       const { data: existingProfile, error: profileError } = await supabase
@@ -110,15 +127,17 @@ export default function BusinessProfileEditor() {
         .maybeSingle();
 
       if (profileError && profileError.code !== 'PGRST116') {
-        console.error('Error loading profile:', profileError);
-        showToast('Error loading profile', 'error');
+        console.error('BusinessProfile: Error loading profile:', profileError);
+        setError('Failed to load profile');
         return;
       }
 
       if (existingProfile) {
+        console.log('BusinessProfile: Profile loaded');
         setProfile(existingProfile);
         lastSavedRef.current = JSON.stringify(existingProfile);
       } else {
+        console.log('BusinessProfile: Creating new profile');
         const newProfile = {
           organization_id: org.id,
           services_visible: true,
@@ -137,22 +156,27 @@ export default function BusinessProfileEditor() {
           .single();
 
         if (createError) {
-          console.error('Error creating profile:', createError);
+          console.error('BusinessProfile: Error creating profile:', createError);
+          setError('Failed to create profile');
         } else if (created) {
+          console.log('BusinessProfile: Profile created');
           setProfile(created);
           lastSavedRef.current = JSON.stringify(created);
         }
       }
     } catch (error) {
-      console.error('Error:', error);
-      showToast('Error loading profile', 'error');
+      console.error('BusinessProfile: Unexpected error:', error);
+      setError('An unexpected error occurred');
     } finally {
       setLoading(false);
     }
-  }, [router, showToast]);
+  }, [router]);
 
   const handleSave = useCallback(async (isAutosave = false) => {
-    if (!organizationId) return;
+    if (!organizationId) {
+      console.error('BusinessProfile: No organization ID');
+      return;
+    }
     
     setSaving(true);
     try {
@@ -187,7 +211,7 @@ export default function BusinessProfileEditor() {
         showToast('Profile saved successfully', 'success');
       }
     } catch (error) {
-      console.error('Error saving profile:', error);
+      console.error('BusinessProfile: Error saving profile:', error);
       if (!isAutosave) {
         showToast('Error saving profile', 'error');
       }
@@ -247,7 +271,7 @@ export default function BusinessProfileEditor() {
       const result = await response.json();
       setSlugAvailable(result.available);
     } catch (error) {
-      console.error('Error checking slug:', error);
+      console.error('BusinessProfile: Error checking slug:', error);
     } finally {
       setCheckingSlug(false);
     }
@@ -313,7 +337,7 @@ export default function BusinessProfileEditor() {
       setProfile({ ...profile, is_published: true });
       showToast('Profile published successfully!', 'success');
     } catch (error: any) {
-      console.error('Error publishing:', error);
+      console.error('BusinessProfile: Error publishing:', error);
       showToast(error.message || 'Error publishing profile', 'error');
     }
   };
@@ -342,7 +366,7 @@ export default function BusinessProfileEditor() {
       setProfile({ ...profile, is_published: false });
       showToast('Profile unpublished', 'success');
     } catch (error) {
-      console.error('Error unpublishing:', error);
+      console.error('BusinessProfile: Error unpublishing:', error);
       showToast('Error unpublishing profile', 'error');
     }
   };
@@ -392,7 +416,7 @@ export default function BusinessProfileEditor() {
 
       showToast(`${type === 'logo' ? 'Logo' : 'Hero image'} uploaded`, 'success');
     } catch (error) {
-      console.error('Error uploading image:', error);
+      console.error('BusinessProfile: Error uploading image:', error);
       showToast('Error uploading image', 'error');
     }
   };
@@ -424,15 +448,79 @@ export default function BusinessProfileEditor() {
       // In a real app, you'd use Clipboard API
       showToast('Link copied: ' + result.link, 'success');
     } catch (error) {
-      console.error('Error generating link:', error);
+      console.error('BusinessProfile: Error generating link:', error);
       showToast('Error generating link', 'error');
     }
   };
 
+  // Loading state
   if (loading) {
     return (
-      <View style={[commonStyles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[commonStyles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading Business Profile...</Text>
+      </View>
+    );
+  }
+
+  // Error state - no organization
+  if (error === 'no_organization') {
+    return (
+      <View style={[commonStyles.container, styles.centerContent]}>
+        <GlassView style={styles.errorCard}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
+            size={48}
+            color={colors.warning}
+          />
+          <Text style={styles.errorTitle}>No Organization Found</Text>
+          <Text style={styles.errorMessage}>
+            You need to complete provider onboarding first to create your business profile.
+          </Text>
+          <TouchableOpacity
+            style={styles.errorButton}
+            onPress={() => router.replace('/(provider)/onboarding/business-basics')}
+          >
+            <Text style={styles.errorButtonText}>Complete Onboarding</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.secondaryButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </GlassView>
+      </View>
+    );
+  }
+
+  // Error state - other errors
+  if (error) {
+    return (
+      <View style={[commonStyles.container, styles.centerContent]}>
+        <GlassView style={styles.errorCard}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.circle.fill"
+            android_material_icon_name="error"
+            size={48}
+            color={colors.error}
+          />
+          <Text style={styles.errorTitle}>Error Loading Profile</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity
+            style={styles.errorButton}
+            onPress={loadProfile}
+          >
+            <Text style={styles.errorButtonText}>Try Again</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.secondaryButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </GlassView>
       </View>
     );
   }
@@ -773,7 +861,7 @@ export default function BusinessProfileEditor() {
         {/* Preview Button */}
         <TouchableOpacity
           style={styles.previewButton}
-          onPress={() => router.push('/provider/business-profile/preview')}
+          onPress={() => router.push('/(provider)/business-profile/preview')}
         >
           <Text style={styles.previewButtonText}>Preview Public Layout</Text>
         </TouchableOpacity>
@@ -789,6 +877,63 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingTop: 0,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 12,
+  },
+  errorCard: {
+    padding: 32,
+    alignItems: 'center',
+    maxWidth: 400,
+  },
+  errorTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  errorButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+    width: '100%',
+  },
+  errorButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  secondaryButton: {
+    backgroundColor: colors.glass,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    width: '100%',
+  },
+  secondaryButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   header: {
     flexDirection: 'row',
