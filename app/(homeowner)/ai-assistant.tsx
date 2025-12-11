@@ -1,11 +1,12 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Message {
   id: string;
@@ -16,12 +17,13 @@ interface Message {
 
 export default function HomeownerAIAssistantScreen() {
   const router = useRouter();
+  const { profile } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: 'Hello! I\'m your HomeBase AI assistant. I can help you with:\n\n• Finding the right service providers\n• Home maintenance tips and schedules\n• Understanding service quotes\n• Booking and scheduling services\n• Home improvement advice\n• General home care questions\n\nHow can I assist you today?',
+      content: 'Hello! I\'m your HomeBase AI assistant. I can help you with:\n\n- Finding the right service providers\n- Home maintenance tips and schedules\n- Understanding service quotes\n- Booking and scheduling services\n- Home improvement advice\n- General home care questions\n\nHow can I assist you today?',
       timestamp: new Date(),
     },
   ]);
@@ -29,14 +31,13 @@ export default function HomeownerAIAssistantScreen() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Scroll to bottom when messages change
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!inputText.trim() || loading) return;
+    if (!inputText.trim() || loading || !profile?.id) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -50,30 +51,48 @@ export default function HomeownerAIAssistantScreen() {
     setLoading(true);
 
     try {
-      // Call the chat-assistant edge function
+      console.log('AI Assistant: Calling chat_assistant function...');
+      
       const { data, error } = await supabase.functions.invoke('chat-assistant', {
         body: {
+          user_id: profile.id,
+          role: 'homeowner',
+          assistant_type: 'homeowner_assistant',
           message: userMessage.content,
-          conversationHistory: messages.map(m => ({
+          conversation_history: messages.map(m => ({
             role: m.role,
             content: m.content,
           })),
-          userType: 'homeowner',
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('AI Assistant: Error:', error);
+        throw error;
+      }
+
+      console.log('AI Assistant: Response received');
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.response || 'I apologize, but I couldn\'t generate a response. Please try again.',
+        content: data?.response || data?.message || 'I apologize, but I couldn\'t generate a response. Please try again.',
         timestamp: new Date(),
       };
 
       setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('Error sending message:', error);
+    } catch (error: any) {
+      console.error('AI Assistant: Error sending message:', error);
+      
+      Alert.alert(
+        'Connection Error',
+        'Failed to connect to AI assistant. Please check your connection and try again.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Retry', onPress: () => sendMessage() }
+        ]
+      );
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -103,12 +122,11 @@ export default function HomeownerAIAssistantScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={100}
     >
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <IconSymbol
             ios_icon_name="chevron.left"
-            android_material_icon_name="arrow-back"
+            android_material_icon_name="arrow_back"
             size={24}
             color={colors.text}
           />
@@ -116,7 +134,7 @@ export default function HomeownerAIAssistantScreen() {
         <View style={styles.headerCenter}>
           <IconSymbol
             ios_icon_name="sparkles"
-            android_material_icon_name="auto-awesome"
+            android_material_icon_name="auto_awesome"
             size={24}
             color={colors.accent}
           />
@@ -132,7 +150,6 @@ export default function HomeownerAIAssistantScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Messages */}
       <ScrollView
         ref={scrollViewRef}
         style={styles.messagesContainer}
@@ -170,7 +187,6 @@ export default function HomeownerAIAssistantScreen() {
         )}
       </ScrollView>
 
-      {/* Input */}
       <View style={styles.inputContainer}>
         <GlassView style={styles.inputWrapper}>
           <TextInput

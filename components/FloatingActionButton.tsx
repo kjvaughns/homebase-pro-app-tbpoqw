@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
@@ -9,10 +9,8 @@ import Animated, {
   useAnimatedStyle, 
   useSharedValue, 
   withSpring,
-  withTiming 
 } from 'react-native-reanimated';
-
-const { height: screenHeight } = Dimensions.get('window');
+import { useAuth } from '@/contexts/AuthContext';
 
 interface FABAction {
   label: string;
@@ -23,26 +21,31 @@ interface FABAction {
 
 export default function FloatingActionButton() {
   const router = useRouter();
+  const { profile } = useAuth();
+  const segments = useSegments();
   const [isExpanded, setIsExpanded] = useState(false);
   const rotation = useSharedValue(0);
   const scale = useSharedValue(1);
 
-  const actions: FABAction[] = [
+  // Determine if we're in provider or homeowner context
+  const isProviderContext = segments[0] === '(provider)' || profile?.role === 'provider';
+
+  const providerActions: FABAction[] = [
     { 
       label: 'Add Client', 
-      iosIcon: 'person-add', 
-      androidIcon: 'person-add', 
+      iosIcon: 'person.badge.plus', 
+      androidIcon: 'person_add', 
       route: '/(provider)/clients/add' 
     },
     { 
       label: 'Create Job', 
-      iosIcon: 'event', 
+      iosIcon: 'calendar.badge.plus', 
       androidIcon: 'event', 
       route: '/(provider)/schedule/create-job' 
     },
     { 
       label: 'Send Invoice', 
-      iosIcon: 'receipt', 
+      iosIcon: 'doc.text', 
       androidIcon: 'receipt', 
       route: '/(provider)/money/create-invoice' 
     },
@@ -54,17 +57,46 @@ export default function FloatingActionButton() {
     },
     { 
       label: 'Broadcast', 
-      iosIcon: 'campaign', 
+      iosIcon: 'megaphone', 
       androidIcon: 'campaign', 
       route: '/(provider)/broadcast/index' 
     },
     { 
       label: 'Ask AI', 
-      iosIcon: 'auto-awesome', 
-      androidIcon: 'auto-awesome', 
+      iosIcon: 'sparkles', 
+      androidIcon: 'auto_awesome', 
       route: '/(provider)/ai-assistant' 
     },
   ];
+
+  const homeownerActions: FABAction[] = [
+    { 
+      label: 'Find Providers', 
+      iosIcon: 'magnifyingglass', 
+      androidIcon: 'search', 
+      route: '/(homeowner)/(tabs)/marketplace' 
+    },
+    { 
+      label: 'My Bookings', 
+      iosIcon: 'calendar', 
+      androidIcon: 'event', 
+      route: '/(homeowner)/(tabs)/bookings' 
+    },
+    { 
+      label: 'My Homes', 
+      iosIcon: 'house', 
+      androidIcon: 'home', 
+      route: '/(homeowner)/homes/index' 
+    },
+    { 
+      label: 'Ask AI', 
+      iosIcon: 'sparkles', 
+      androidIcon: 'auto_awesome', 
+      route: '/(homeowner)/ai-assistant' 
+    },
+  ];
+
+  const actions = isProviderContext ? providerActions : homeownerActions;
 
   const toggleMenu = () => {
     rotation.value = withSpring(isExpanded ? 0 : 45, {
@@ -98,7 +130,6 @@ export default function FloatingActionButton() {
 
   return (
     <React.Fragment>
-      {/* Action Menu Modal */}
       <Modal
         visible={isExpanded}
         transparent
@@ -139,7 +170,6 @@ export default function FloatingActionButton() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Main FAB Button */}
       <Animated.View style={[styles.fabContainer, fabAnimatedStyle]}>
         <TouchableOpacity
           style={styles.fab}
@@ -147,7 +177,7 @@ export default function FloatingActionButton() {
           activeOpacity={0.9}
         >
           <IconSymbol
-            ios_icon_name="add"
+            ios_icon_name="plus"
             android_material_icon_name="add"
             size={28}
             color={colors.text}
@@ -223,7 +253,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: colors.text,
-    fontFamily: 'Inter',
   },
   actionIconCircle: {
     width: 40,

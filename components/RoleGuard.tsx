@@ -17,9 +17,14 @@ export function RoleGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Get stored role as fallback
       const storedRole = await AsyncStorage.getItem('user_role');
-      const currentRole = profile?.role || storedRole || 'provider';
+      const currentRole = profile?.role || storedRole || 'homeowner';
+
+      // Ensure role is valid
+      if (!['provider', 'homeowner'].includes(currentRole)) {
+        console.error('RoleGuard: Invalid role detected:', currentRole);
+        await AsyncStorage.setItem('user_role', 'homeowner');
+      }
 
       console.log('RoleGuard: checking route', {
         segments,
@@ -28,7 +33,6 @@ export function RoleGuard({ children }: { children: React.ReactNode }) {
         profileRole: profile?.role,
       });
 
-      // If not authenticated, redirect to auth
       if (!isAuthenticated) {
         const inAuthGroup = segments[0] === 'auth';
         if (!inAuthGroup) {
@@ -39,12 +43,10 @@ export function RoleGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // User is authenticated
       const inAuthGroup = segments[0] === 'auth';
       const inProviderGroup = segments[0] === '(provider)';
       const inHomeownerGroup = segments[0] === '(homeowner)';
 
-      // If in auth group, redirect to appropriate dashboard
       if (inAuthGroup) {
         console.log('RoleGuard: In auth group, redirecting to dashboard');
         if (currentRole === 'provider') {
@@ -56,7 +58,6 @@ export function RoleGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Check if user is in wrong role group
       if (currentRole === 'provider' && inHomeownerGroup) {
         console.log('RoleGuard: Provider in homeowner group, redirecting');
         router.replace('/(provider)/(tabs)');

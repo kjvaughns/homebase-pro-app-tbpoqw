@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('AuthContext: Loading user data for:', userId);
       
-      // Load profile with retries (in case trigger hasn't completed yet)
+      // Load profile with retries
       let profileData = null;
       let profileError = null;
       
@@ -53,7 +53,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (profileData) break;
         
-        // Wait a bit before retrying
         if (i < retries - 1) {
           console.log(`AuthContext: Profile not found, retrying... (${i + 1}/${retries})`);
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -67,6 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (profileData) {
+        // Ensure role is exactly "provider" or "homeowner"
+        if (!['provider', 'homeowner'].includes(profileData.role)) {
+          console.error('AuthContext: Invalid role:', profileData.role);
+          profileData.role = 'homeowner'; // Default to homeowner
+        }
+
         // Check for persisted role in AsyncStorage
         const storedRole = await AsyncStorage.getItem(ROLE_STORAGE_KEY);
         
@@ -172,7 +177,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         console.error('AuthContext: Login error:', error);
         
-        // Show user-friendly error messages
         if (error.message.includes('Invalid login credentials')) {
           Alert.alert(
             'Invalid Credentials',
@@ -182,24 +186,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else if (error.message.includes('Email not confirmed')) {
           Alert.alert(
             'Email Not Confirmed',
-            'Please check your email and click the confirmation link before logging in. Check your spam folder if you don\'t see it.',
-            [
-              { text: 'OK' },
-              {
-                text: 'Resend Email',
-                onPress: async () => {
-                  const { error: resendError } = await supabase.auth.resend({
-                    type: 'signup',
-                    email: email,
-                  });
-                  if (resendError) {
-                    Alert.alert('Error', 'Failed to resend confirmation email. Please try again later.');
-                  } else {
-                    Alert.alert('Success', 'Confirmation email sent! Please check your inbox.');
-                  }
-                }
-              }
-            ]
+            'Please check your email and click the confirmation link before logging in.',
+            [{ text: 'OK' }]
           );
         } else {
           Alert.alert(
@@ -216,10 +204,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user && data.session) {
         console.log('AuthContext: Login successful:', data.user.id);
         
-        // Wait for user data to load
         await loadUserData(data.user.id);
         
-        // Get the loaded profile to determine navigation
         const { data: profileData } = await supabase
           .from('profiles')
           .select('*')
@@ -253,7 +239,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('AuthContext: Attempting signup for:', email, 'as', role);
       setLoading(true);
       
-      // Sign up the user - the database trigger will create the profile
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -268,11 +253,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         console.error('AuthContext: Signup error:', error);
         
-        // Handle specific error cases
         if (error.message.includes('User already registered') || error.message.includes('already exists')) {
           Alert.alert(
             'Account Already Exists',
-            'An account with this email already exists. Please sign in instead or use a different email address.',
+            'An account with this email already exists. Please sign in instead.',
             [
               { text: 'Cancel', style: 'cancel' },
               {
@@ -298,14 +282,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data.user) {
         console.log('AuthContext: Signup successful:', data.user.id);
-        console.log('AuthContext: Session:', data.session ? 'exists' : 'null');
         
-        // Check if email confirmation is required
         if (!data.session) {
-          // Email confirmation is required
           Alert.alert(
             'Confirm Your Email',
-            'We\'ve sent a confirmation email to ' + email + '. Please click the link in the email to activate your account, then return here to sign in.',
+            'We\'ve sent a confirmation email to ' + email + '. Please click the link to activate your account.',
             [{ 
               text: 'OK',
               onPress: () => {
@@ -317,22 +298,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         
-        // If we have a session, wait for the trigger to create the profile
         await loadUserData(data.user.id);
-
-        // Store initial role
         await AsyncStorage.setItem(ROLE_STORAGE_KEY, role);
 
-        // Show success alert
         Alert.alert(
           'Account Created!',
-          'Your account has been created successfully. Let\'s get you set up!',
+          'Your account has been created successfully.',
           [{ 
             text: 'Continue',
             onPress: () => {
-              // Navigate to appropriate onboarding or dashboard
               if (role === 'provider') {
-                // Check if onboarding is completed
                 supabase
                   .from('organizations')
                   .select('onboarding_completed')
@@ -363,7 +338,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('AuthContext: Logging out user...');
       
-      // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
       
       if (error) {
@@ -376,18 +350,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Clear stored role
       await AsyncStorage.removeItem(ROLE_STORAGE_KEY);
       
-      // Clear local state
       setUser(null);
       setProfile(null);
       setOrganization(null);
       setSession(null);
       
       console.log('AuthContext: Logout successful, redirecting to login...');
-      
-      // Navigate to login screen
       router.replace('/auth/login');
     } catch (error) {
       console.error('AuthContext: Logout exception:', error);
@@ -412,12 +382,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Validate target role
+    if (!['provider', 'homeowner'].includes(targetRole)) {
+      console.error('AuthContext: Invalid target role:', targetRole);
+      Alert.alert('Error', 'Invalid role specified.');
+      return;
+    }
+
     try {
       console.log('=== AUTH CONTEXT: SWITCH PROFILE START ===');
       console.log('Current role:', profile.role);
       console.log('Target role:', targetRole);
       
-      // If already on the target role, just navigate
       if (profile.role === targetRole) {
         console.log('AuthContext: Already on target role, navigating...');
         if (targetRole === 'provider') {
@@ -428,11 +404,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Check if switching to provider
       if (targetRole === 'provider') {
         console.log('AuthContext: Switching to provider...');
         
-        // Check if organization exists
         const { data: existingOrg, error: orgCheckError } = await supabase
           .from('organizations')
           .select('*')
@@ -444,10 +418,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw orgCheckError;
         }
 
-        console.log('AuthContext: Existing organization:', existingOrg ? 'found' : 'not found');
-
         if (!existingOrg) {
-          // No organization exists, ask to create one
           Alert.alert(
             'Create Provider Account',
             'You don\'t have a provider account yet. Would you like to create one?',
@@ -457,25 +428,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 text: 'Create Account',
                 onPress: async () => {
                   try {
-                    console.log('AuthContext: Creating provider account...');
-                    
-                    // Update profile role first
                     const { error: roleError } = await supabase
                       .from('profiles')
                       .update({ role: 'provider', updated_at: new Date().toISOString() })
                       .eq('id', profile.id);
 
-                    if (roleError) {
-                      console.error('AuthContext: Error updating role:', roleError);
-                      throw roleError;
-                    }
+                    if (roleError) throw roleError;
 
-                    console.log('AuthContext: Role updated successfully');
-
-                    // Store role
                     await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'provider');
 
-                    // Create organization
                     const { error: orgError } = await supabase
                       .from('organizations')
                       .insert({
@@ -484,21 +445,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         onboarding_completed: false,
                       });
 
-                    if (orgError) {
-                      console.error('AuthContext: Error creating organization:', orgError);
-                      throw orgError;
-                    }
+                    if (orgError) throw orgError;
 
-                    console.log('AuthContext: Organization created successfully');
-
-                    // Refresh profile data
                     await loadUserData(session.user.id);
-
-                    console.log('AuthContext: Navigating to onboarding...');
-                    // Navigate to onboarding
                     router.replace('/(provider)/onboarding/business-basics');
-                    
-                    // Small delay to give RoleGuard time to see the new value
                     await new Promise(resolve => setTimeout(resolve, 150));
                   } catch (error: any) {
                     console.error('AuthContext: Error creating provider account:', error);
@@ -509,128 +459,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ]
           );
           return;
-        } else {
-          // Organization exists, check if onboarding is completed
-          if (!existingOrg.onboarding_completed) {
-            Alert.alert(
-              'Complete Onboarding',
-              'Please complete your provider onboarding first.',
-              [{ 
-                text: 'Continue',
-                onPress: async () => {
-                  try {
-                    console.log('AuthContext: Updating role and navigating to onboarding...');
-                    
-                    // Update role
-                    const { error: roleError } = await supabase
-                      .from('profiles')
-                      .update({ role: 'provider', updated_at: new Date().toISOString() })
-                      .eq('id', profile.id);
-                    
-                    if (roleError) throw roleError;
-
-                    await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'provider');
-                    await loadUserData(session.user.id);
-                    
-                    router.replace('/(provider)/onboarding/business-basics');
-                    
-                    // Small delay to give RoleGuard time to see the new value
-                    await new Promise(resolve => setTimeout(resolve, 150));
-                  } catch (error: any) {
-                    console.error('AuthContext: Error switching to provider:', error);
-                    Alert.alert('Error', 'Failed to switch profile. Please try again.');
-                  }
-                }
-              }]
-            );
-            return;
-          }
-        }
-      }
-
-      // Check if switching to homeowner
-      if (targetRole === 'homeowner') {
-        console.log('AuthContext: Switching to homeowner...');
-        
-        const { data: existingHomes, error: homesError } = await supabase
-          .from('homes')
-          .select('*')
-          .eq('homeowner_id', profile.id);
-
-        if (homesError) {
-          console.error('AuthContext: Error checking homes:', homesError);
-          throw homesError;
-        }
-
-        console.log('AuthContext: Existing homes:', existingHomes?.length || 0);
-
-        if (!existingHomes || existingHomes.length === 0) {
-          // No homes exist, ask to add one
+        } else if (!existingOrg.onboarding_completed) {
           Alert.alert(
-            'Switch to Homeowner',
-            'You don\'t have any homes added yet. Would you like to add your first home or skip for now?',
-            [
-              { 
-                text: 'Skip for Now', 
-                onPress: async () => {
-                  try {
-                    console.log('AuthContext: Skipping home setup, updating role...');
-                    
-                    // Update role and navigate
-                    const { error: roleError } = await supabase
-                      .from('profiles')
-                      .update({ role: 'homeowner', updated_at: new Date().toISOString() })
-                      .eq('id', profile.id);
-                    
-                    if (roleError) throw roleError;
+            'Complete Onboarding',
+            'Please complete your provider onboarding first.',
+            [{ 
+              text: 'Continue',
+              onPress: async () => {
+                try {
+                  const { error: roleError } = await supabase
+                    .from('profiles')
+                    .update({ role: 'provider', updated_at: new Date().toISOString() })
+                    .eq('id', profile.id);
+                  
+                  if (roleError) throw roleError;
 
-                    await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'homeowner');
-                    await loadUserData(session.user.id);
-                    
-                    router.replace('/(homeowner)/(tabs)');
-                    
-                    // Small delay to give RoleGuard time to see the new value
-                    await new Promise(resolve => setTimeout(resolve, 150));
-                  } catch (error: any) {
-                    console.error('AuthContext: Error switching to homeowner:', error);
-                    Alert.alert('Error', 'Failed to switch profile. Please try again.');
-                  }
-                }
-              },
-              {
-                text: 'Add Home',
-                onPress: async () => {
-                  try {
-                    console.log('AuthContext: Navigating to add home...');
-                    
-                    // Update profile role
-                    const { error: roleError } = await supabase
-                      .from('profiles')
-                      .update({ role: 'homeowner', updated_at: new Date().toISOString() })
-                      .eq('id', profile.id);
-
-                    if (roleError) throw roleError;
-
-                    await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'homeowner');
-                    await loadUserData(session.user.id);
-
-                    router.replace('/(homeowner)/onboarding/profile');
-                    
-                    // Small delay to give RoleGuard time to see the new value
-                    await new Promise(resolve => setTimeout(resolve, 150));
-                  } catch (error: any) {
-                    console.error('AuthContext: Error creating homeowner account:', error);
-                    Alert.alert('Error', 'Failed to create homeowner account. Please try again.');
-                  }
+                  await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'provider');
+                  await loadUserData(session.user.id);
+                  router.replace('/(provider)/onboarding/business-basics');
+                  await new Promise(resolve => setTimeout(resolve, 150));
+                } catch (error: any) {
+                  console.error('AuthContext: Error switching to provider:', error);
+                  Alert.alert('Error', 'Failed to switch profile. Please try again.');
                 }
               }
-            ]
+            }]
           );
           return;
         }
       }
 
-      // If we get here, we can switch directly
+      if (targetRole === 'homeowner') {
+        console.log('AuthContext: Switching to homeowner...');
+      }
+
+      // Switch role directly
       console.log('AuthContext: Switching role directly...');
       const { error: updateError } = await supabase
         .from('profiles')
@@ -642,23 +505,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw updateError;
       }
 
-      console.log('AuthContext: Role updated successfully');
-
-      // Store role
       await AsyncStorage.setItem(ROLE_STORAGE_KEY, targetRole);
-
-      // Refresh profile data
       await loadUserData(session.user.id);
       
-      console.log('AuthContext: Navigating to dashboard...');
-      // Navigate to appropriate dashboard
       if (targetRole === 'provider') {
         router.replace('/(provider)/(tabs)');
       } else {
         router.replace('/(homeowner)/(tabs)');
       }
 
-      // Small delay to give RoleGuard time to see the new value
       await new Promise(resolve => setTimeout(resolve, 150));
 
       Alert.alert(
