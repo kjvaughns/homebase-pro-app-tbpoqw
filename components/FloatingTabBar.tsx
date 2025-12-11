@@ -20,7 +20,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
+import { useColorMode } from '@/contexts/ColorModeContext';
+import { spacing, borderRadius, shadows, textStyles } from '@/theme';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -34,18 +35,19 @@ export interface TabBarItem {
 interface FloatingTabBarProps {
   tabs: TabBarItem[];
   containerWidth?: number;
-  borderRadius?: number;
+  borderRadiusValue?: number;
   bottomMargin?: number;
 }
 
 export default function FloatingTabBar({
   tabs,
   containerWidth = screenWidth * 0.9,
-  borderRadius = 30,
+  borderRadiusValue = 30,
   bottomMargin = 20
 }: FloatingTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { palette, colorMode } = useColorMode();
   const animatedValue = useSharedValue(0);
 
   const activeTabIndex = React.useMemo(() => {
@@ -116,11 +118,30 @@ export default function FloatingTabBar({
       ]}>
         <BlurView
           intensity={Platform.OS === 'ios' ? 100 : 100}
-          tint="dark"
-          style={[styles.blurContainer, { borderRadius }]}
+          tint={colorMode === 'light' ? 'light' : 'dark'}
+          style={[
+            styles.blurContainer, 
+            { 
+              borderRadius: borderRadiusValue,
+              borderColor: palette.glassBorder,
+            },
+            shadows.xl,
+          ]}
         >
-          <View style={styles.innerContainer}>
-            <Animated.View style={[styles.indicator, indicatorStyle, { width: `${tabWidthPercent}%` }]} />
+          <View style={[
+            styles.innerContainer,
+            { backgroundColor: palette.surface }
+          ]}>
+            <Animated.View 
+              style={[
+                styles.indicator, 
+                indicatorStyle, 
+                { 
+                  width: `${tabWidthPercent}%`,
+                  backgroundColor: palette.inputBackground,
+                }
+              ]} 
+            />
             <View style={styles.tabsContainer}>
               {tabs.map((tab, index) => {
                 const isActive = activeTabIndex === index;
@@ -137,11 +158,12 @@ export default function FloatingTabBar({
                         android_material_icon_name={tab.icon}
                         ios_icon_name={tab.icon}
                         size={24}
-                        color={isActive ? colors.primary : colors.text}
+                        color={isActive ? palette.primary : palette.text}
                       />
                       <Text
                         style={[
                           styles.tabLabel,
+                          { color: isActive ? palette.primary : palette.text },
                           isActive && styles.tabLabelActive,
                         ]}
                       >
@@ -174,35 +196,28 @@ const styles = StyleSheet.create({
   blurContainer: {
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 24,
-    elevation: 12,
   },
   innerContainer: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    position: 'relative',
   },
   indicator: {
     position: 'absolute',
     top: 6,
     left: 8,
     bottom: 6,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: borderRadius.xxl,
   },
   tabsContainer: {
     flexDirection: 'row',
     height: 68,
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.sm,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   tabContent: {
     alignItems: 'center',
@@ -210,17 +225,10 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tabLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.text,
+    ...textStyles.small,
     marginTop: 2,
-    textShadowColor: 'rgba(0, 0, 0, 1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-    fontFamily: 'Inter',
   },
   tabLabelActive: {
-    color: colors.primary,
-    fontWeight: '700',
+    ...textStyles.smallBold,
   },
 });

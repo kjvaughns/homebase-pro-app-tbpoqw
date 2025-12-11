@@ -1,17 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Animated, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Animated, ActivityIndicator, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
-import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { useColorMode } from '@/contexts/ColorModeContext';
 import { AccountSwitcherDropdown } from '@/components/AccountSwitcherDropdown';
 import { supabase } from '@/app/integrations/supabase/client';
+import { spacing, borderRadius, textStyles, safeArea } from '@/theme';
 
 export default function MoreScreen() {
   const router = useRouter();
   const { user, profile, organization, logout } = useAuth();
+  const { palette, colorMode, toggleColorMode } = useColorMode();
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
@@ -110,7 +112,10 @@ export default function MoreScreen() {
   };
 
   return (
-    <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
+    <ScrollView 
+      style={[styles.container, { backgroundColor: palette.background }]} 
+      contentContainerStyle={styles.content}
+    >
       <AccountSwitcherDropdown
         visible={showAccountSwitcher}
         onClose={() => setShowAccountSwitcher(false)}
@@ -125,7 +130,7 @@ export default function MoreScreen() {
             resizeMode="contain"
           />
         </TouchableOpacity>
-        <Text style={styles.title}>More</Text>
+        <Text style={[styles.title, { color: palette.text }]}>More</Text>
       </Animated.View>
 
       {/* Profile Card */}
@@ -133,20 +138,28 @@ export default function MoreScreen() {
         <View style={styles.section}>
           <GlassView style={styles.profileCard}>
             <View style={styles.profileHeader}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{user?.name?.[0]?.toUpperCase() || 'P'}</Text>
+              <View style={[styles.avatar, { backgroundColor: palette.primary }]}>
+                <Text style={[styles.avatarText, { color: palette.text }]}>
+                  {user?.name?.[0]?.toUpperCase() || 'P'}
+                </Text>
               </View>
               <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>{user?.name || 'Provider'}</Text>
-                <Text style={styles.profileEmail}>{user?.email}</Text>
-                <View style={styles.badge}>
+                <Text style={[styles.profileName, { color: palette.text }]}>
+                  {user?.name || 'Provider'}
+                </Text>
+                <Text style={[styles.profileEmail, { color: palette.textMuted }]}>
+                  {user?.email}
+                </Text>
+                <View style={[styles.badge, { backgroundColor: palette.primary + '20' }]}>
                   <IconSymbol 
                     ios_icon_name={profile?.role === 'provider' ? 'briefcase.fill' : 'house.fill'} 
                     android_material_icon_name={profile?.role === 'provider' ? 'business' : 'home'} 
                     size={12} 
-                    color={colors.primary} 
+                    color={palette.primary} 
                   />
-                  <Text style={styles.badgeText}>{profile?.role?.toUpperCase() || 'PROVIDER'}</Text>
+                  <Text style={[styles.badgeText, { color: palette.primary }]}>
+                    {profile?.role?.toUpperCase() || 'PROVIDER'}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -154,20 +167,61 @@ export default function MoreScreen() {
         </View>
       </Animated.View>
 
+      {/* Appearance */}
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [25, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Appearance</Text>
+          <GlassView style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <IconSymbol 
+                ios_icon_name={colorMode === 'light' ? 'sun.max.fill' : 'moon.fill'} 
+                android_material_icon_name={colorMode === 'light' ? 'light-mode' : 'dark-mode'} 
+                size={24} 
+                color={palette.primary} 
+              />
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingLabel, { color: palette.text }]}>Dark Mode</Text>
+                <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                  {colorMode === 'dark' ? 'Enabled' : 'Disabled'}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={colorMode === 'dark'}
+              onValueChange={toggleColorMode}
+              trackColor={{ false: palette.inputBackground, true: palette.primary }}
+              thumbColor={palette.text}
+            />
+          </GlassView>
+        </View>
+      </Animated.View>
+
       {/* Account Switcher */}
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }}>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Account</Text>
           <TouchableOpacity onPress={() => setShowAccountSwitcher(true)}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <IconSymbol ios_icon_name="arrow.left.arrow.right" android_material_icon_name="swap-horiz" size={24} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="arrow.left.arrow.right" 
+                  android_material_icon_name="swap-horiz" 
+                  size={24} 
+                  color={palette.primary} 
+                />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Switch Account</Text>
-                  <Text style={styles.settingDescription}>Change between provider and homeowner</Text>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Switch Account</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Change between provider and homeowner
+                  </Text>
                 </View>
               </View>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
             </GlassView>
           </TouchableOpacity>
         </View>
@@ -176,17 +230,29 @@ export default function MoreScreen() {
       {/* Business Profile */}
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }}>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Business</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Business</Text>
           <TouchableOpacity onPress={() => router.push('/(provider)/business-profile')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <IconSymbol ios_icon_name="building.2.fill" android_material_icon_name="business" size={24} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="building.2.fill" 
+                  android_material_icon_name="business" 
+                  size={24} 
+                  color={palette.primary} 
+                />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Business Profile</Text>
-                  <Text style={styles.settingDescription}>Edit your marketplace presence</Text>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Business Profile</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Edit your marketplace presence
+                  </Text>
                 </View>
               </View>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
             </GlassView>
           </TouchableOpacity>
         </View>
@@ -195,17 +261,29 @@ export default function MoreScreen() {
       {/* Money */}
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) }] }}>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Money</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Money</Text>
           <TouchableOpacity onPress={() => router.push('/(provider)/money-home')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <IconSymbol ios_icon_name="dollarsign.circle.fill" android_material_icon_name="attach-money" size={24} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="dollarsign.circle.fill" 
+                  android_material_icon_name="attach-money" 
+                  size={24} 
+                  color={palette.primary} 
+                />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Money Hub</Text>
-                  <Text style={styles.settingDescription}>Revenue, payouts & analytics</Text>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Money Hub</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Revenue, payouts & analytics
+                  </Text>
                 </View>
               </View>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
             </GlassView>
           </TouchableOpacity>
         </View>
@@ -214,17 +292,29 @@ export default function MoreScreen() {
       {/* Billing */}
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }) }] }}>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Billing</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Billing</Text>
           <TouchableOpacity onPress={() => router.push('/(provider)/billing')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="receipt" size={24} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="doc.text.fill" 
+                  android_material_icon_name="receipt" 
+                  size={24} 
+                  color={palette.primary} 
+                />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Subscription & Billing</Text>
-                  <Text style={styles.settingDescription}>Manage your plan and payment methods</Text>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Subscription & Billing</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Manage your plan and payment methods
+                  </Text>
                 </View>
               </View>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
             </GlassView>
           </TouchableOpacity>
         </View>
@@ -233,17 +323,29 @@ export default function MoreScreen() {
       {/* Integrations */}
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [70, 0] }) }] }}>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Integrations</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Integrations</Text>
           <TouchableOpacity onPress={() => router.push('/(provider)/integrations')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <IconSymbol ios_icon_name="app.connected.to.app.below.fill" android_material_icon_name="extension" size={24} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="app.connected.to.app.below.fill" 
+                  android_material_icon_name="extension" 
+                  size={24} 
+                  color={palette.primary} 
+                />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Integrations</Text>
-                  <Text style={styles.settingDescription}>Calendar, QuickBooks, Zapier</Text>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Integrations</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Calendar, QuickBooks, Zapier
+                  </Text>
                 </View>
               </View>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
             </GlassView>
           </TouchableOpacity>
         </View>
@@ -252,17 +354,29 @@ export default function MoreScreen() {
       {/* Notifications */}
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }] }}>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notifications</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Notifications</Text>
           <TouchableOpacity onPress={() => router.push('/(provider)/notifications')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={24} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="bell.fill" 
+                  android_material_icon_name="notifications" 
+                  size={24} 
+                  color={palette.primary} 
+                />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Notification Settings</Text>
-                  <Text style={styles.settingDescription}>Manage push and email notifications</Text>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Notification Settings</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Manage push and email notifications
+                  </Text>
                 </View>
               </View>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
             </GlassView>
           </TouchableOpacity>
         </View>
@@ -271,56 +385,104 @@ export default function MoreScreen() {
       {/* About and Legal */}
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [90, 0] }) }] }}>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>About & Legal</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>About & Legal</Text>
           <TouchableOpacity onPress={() => router.push('/(provider)/support')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <IconSymbol ios_icon_name="questionmark.circle.fill" android_material_icon_name="help" size={24} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="questionmark.circle.fill" 
+                  android_material_icon_name="help" 
+                  size={24} 
+                  color={palette.primary} 
+                />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Help & Support</Text>
-                  <Text style={styles.settingDescription}>Get help from our team</Text>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Help & Support</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Get help from our team
+                  </Text>
                 </View>
               </View>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
             </GlassView>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => Alert.alert('About', 'HomeBase v1.0.0\n\nYour all-in-one home service management platform.')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <IconSymbol ios_icon_name="info.circle.fill" android_material_icon_name="info" size={24} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="info.circle.fill" 
+                  android_material_icon_name="info" 
+                  size={24} 
+                  color={palette.primary} 
+                />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>About HomeBase</Text>
-                  <Text style={styles.settingDescription}>Version and app information</Text>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>About HomeBase</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Version and app information
+                  </Text>
                 </View>
               </View>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
             </GlassView>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => Alert.alert('Privacy Policy', 'View our privacy policy at homebase.app/privacy')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <IconSymbol ios_icon_name="lock.fill" android_material_icon_name="lock" size={24} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="lock.fill" 
+                  android_material_icon_name="lock" 
+                  size={24} 
+                  color={palette.primary} 
+                />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Privacy Policy</Text>
-                  <Text style={styles.settingDescription}>How we protect your data</Text>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Privacy Policy</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    How we protect your data
+                  </Text>
                 </View>
               </View>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
             </GlassView>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => Alert.alert('Terms of Service', 'View our terms at homebase.app/terms')}>
             <GlassView style={styles.settingItem}>
               <View style={styles.settingLeft}>
-                <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="description" size={24} color={colors.primary} />
+                <IconSymbol 
+                  ios_icon_name="doc.text.fill" 
+                  android_material_icon_name="description" 
+                  size={24} 
+                  color={palette.primary} 
+                />
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Terms of Service</Text>
-                  <Text style={styles.settingDescription}>Legal terms and conditions</Text>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Terms of Service</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Legal terms and conditions
+                  </Text>
                 </View>
               </View>
-              <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
             </GlassView>
           </TouchableOpacity>
         </View>
@@ -330,17 +492,29 @@ export default function MoreScreen() {
       {showTestButton && (
         <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [95, 0] }) }] }}>
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Developer Tools</Text>
+            <Text style={[styles.sectionTitle, { color: palette.text }]}>Developer Tools</Text>
             <TouchableOpacity onPress={createTestProfile}>
-              <GlassView style={[styles.settingItem, { borderColor: colors.primary + '40', borderWidth: 1 }]}>
+              <GlassView style={[styles.settingItem, { borderColor: palette.primary + '40', borderWidth: 1 }]}>
                 <View style={styles.settingLeft}>
-                  <IconSymbol ios_icon_name="hammer.fill" android_material_icon_name="build" size={24} color={colors.primary} />
+                  <IconSymbol 
+                    ios_icon_name="hammer.fill" 
+                    android_material_icon_name="build" 
+                    size={24} 
+                    color={palette.primary} 
+                  />
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingLabel}>Create Test Profile</Text>
-                    <Text style={styles.settingDescription}>Generate demo account with sample data</Text>
+                    <Text style={[styles.settingLabel, { color: palette.text }]}>Create Test Profile</Text>
+                    <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                      Generate demo account with sample data
+                    </Text>
                   </View>
                 </View>
-                <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
+                <IconSymbol 
+                  ios_icon_name="chevron.right" 
+                  android_material_icon_name="chevron-right" 
+                  size={20} 
+                  color={palette.textMuted} 
+                />
               </GlassView>
             </TouchableOpacity>
           </View>
@@ -350,16 +524,27 @@ export default function MoreScreen() {
       {/* Logout */}
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) }] }}>
         <TouchableOpacity 
-          style={styles.logoutButton} 
+          style={[
+            styles.logoutButton,
+            { 
+              backgroundColor: palette.surface,
+              borderColor: palette.error + '40',
+            }
+          ]} 
           onPress={handleLogout}
           disabled={isLoggingOut}
         >
           {isLoggingOut ? (
-            <ActivityIndicator size="small" color={colors.error} />
+            <ActivityIndicator size="small" color={palette.error} />
           ) : (
             <React.Fragment>
-              <IconSymbol ios_icon_name="arrow.right.square.fill" android_material_icon_name="logout" size={20} color={colors.error} />
-              <Text style={styles.logoutText}>Logout</Text>
+              <IconSymbol 
+                ios_icon_name="arrow.right.square.fill" 
+                android_material_icon_name="logout" 
+                size={20} 
+                color={palette.error} 
+              />
+              <Text style={[styles.logoutText, { color: palette.error }]}>Logout</Text>
             </React.Fragment>
           )}
         </TouchableOpacity>
@@ -369,94 +554,84 @@ export default function MoreScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   content: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 140,
+    paddingTop: safeArea.top,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: safeArea.bottom,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: spacing.xxxl,
   },
   logo: {
     width: 80,
     height: 80,
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: colors.text,
+    ...textStyles.heading,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: spacing.xxl,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 12,
+    ...textStyles.captionBold,
+    marginBottom: spacing.md,
     paddingLeft: 4,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   profileCard: {
-    padding: 20,
+    padding: spacing.xl,
   },
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: spacing.lg,
   },
   avatar: {
     width: 64,
     height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
+    borderRadius: borderRadius.round,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.title,
   },
   profileInfo: {
     flex: 1,
   },
   profileName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.subtitle,
     marginBottom: 4,
   },
   profileEmail: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 10,
+    ...textStyles.caption,
+    marginBottom: spacing.sm,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: colors.primary + '20',
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: borderRadius.sm,
     gap: 6,
   },
   badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary,
+    ...textStyles.smallBold,
     letterSpacing: 0.5,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    marginBottom: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
   },
   settingLeft: {
     flexDirection: 'row',
@@ -468,31 +643,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   settingLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
+    ...textStyles.bodyBold,
     marginBottom: 4,
   },
   settingDescription: {
-    fontSize: 13,
-    color: colors.textSecondary,
+    ...textStyles.caption,
     lineHeight: 18,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.glass,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: spacing.lg,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: colors.error + '40',
-    gap: 8,
-    marginTop: 8,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   logoutText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.error,
+    ...textStyles.bodyBold,
   },
 });

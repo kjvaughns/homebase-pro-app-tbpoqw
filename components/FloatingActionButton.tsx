@@ -2,7 +2,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
 import Animated, { 
@@ -11,6 +10,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useAuth } from '@/contexts/AuthContext';
+import { useColorMode } from '@/contexts/ColorModeContext';
+import { spacing, borderRadius, shadows, textStyles } from '@/theme';
 
 interface FABAction {
   label: string;
@@ -22,12 +23,12 @@ interface FABAction {
 export default function FloatingActionButton() {
   const router = useRouter();
   const { profile } = useAuth();
+  const { palette, colorMode } = useColorMode();
   const segments = useSegments();
   const [isExpanded, setIsExpanded] = useState(false);
   const rotation = useSharedValue(0);
   const scale = useSharedValue(1);
 
-  // Determine if we're in provider or homeowner context
   const isProviderContext = segments[0] === '(provider)' || profile?.role === 'provider';
 
   const providerActions: FABAction[] = [
@@ -131,29 +132,47 @@ export default function FloatingActionButton() {
         onRequestClose={toggleMenu}
       >
         <TouchableOpacity 
-          style={styles.backdrop}
+          style={[styles.backdrop, { backgroundColor: palette.overlay }]}
           activeOpacity={1}
           onPress={toggleMenu}
         >
-          <BlurView intensity={50} tint="dark" style={styles.blurBackdrop}>
+          <BlurView 
+            intensity={50} 
+            tint={colorMode === 'light' ? 'light' : 'dark'} 
+            style={styles.blurBackdrop}
+          >
             <View style={styles.menuContainer}>
               {actions.map((action, index) => (
                 <TouchableOpacity
                   key={index}
-                  style={styles.actionButton}
+                  style={[
+                    styles.actionButton,
+                    {
+                      backgroundColor: palette.surface,
+                      borderColor: palette.glassBorder,
+                    }
+                  ]}
                   onPress={() => handleActionPress(action.route)}
                   activeOpacity={0.8}
                 >
                   <View style={styles.actionContent}>
-                    <View style={styles.actionLabelContainer}>
-                      <Text style={styles.actionLabel}>{action.label}</Text>
+                    <View style={[
+                      styles.actionLabelContainer,
+                      { backgroundColor: palette.inputBackground }
+                    ]}>
+                      <Text style={[styles.actionLabel, { color: palette.text }]}>
+                        {action.label}
+                      </Text>
                     </View>
-                    <View style={styles.actionIconCircle}>
+                    <View style={[
+                      styles.actionIconCircle,
+                      { backgroundColor: palette.primary }
+                    ]}>
                       <IconSymbol
                         ios_icon_name={action.iosIcon}
                         android_material_icon_name={action.androidIcon}
                         size={20}
-                        color={colors.text}
+                        color={palette.text}
                       />
                     </View>
                   </View>
@@ -166,7 +185,11 @@ export default function FloatingActionButton() {
 
       <Animated.View style={[styles.fabContainer, fabAnimatedStyle]}>
         <TouchableOpacity
-          style={styles.fab}
+          style={[
+            styles.fab,
+            { backgroundColor: palette.primary },
+            shadows.glow(palette.primary),
+          ]}
           onPress={toggleMenu}
           activeOpacity={0.9}
         >
@@ -174,7 +197,7 @@ export default function FloatingActionButton() {
             ios_icon_name="plus"
             android_material_icon_name="add"
             size={28}
-            color={colors.text}
+            color={palette.text}
           />
         </TouchableOpacity>
       </Animated.View>
@@ -185,26 +208,19 @@ export default function FloatingActionButton() {
 const styles = StyleSheet.create({
   fabContainer: {
     position: 'absolute',
-    right: 20,
+    right: spacing.xl,
     bottom: 110,
     zIndex: 9999,
   },
   fab: {
     width: 64,
     height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
+    borderRadius: borderRadius.round,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 12,
   },
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
   },
   blurBackdrop: {
     flex: 1,
@@ -216,40 +232,34 @@ const styles = StyleSheet.create({
   menuContainer: {
     width: '85%',
     maxWidth: 340,
-    gap: 12,
+    gap: spacing.md,
   },
   actionButton: {
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden',
-    backgroundColor: 'rgba(30, 30, 30, 0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   actionContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
   },
   actionLabelContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.xl,
   },
   actionLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
+    ...textStyles.captionBold,
   },
   actionIconCircle: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
+    borderRadius: borderRadius.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },

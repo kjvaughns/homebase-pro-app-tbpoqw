@@ -1,18 +1,29 @@
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Animated, ActivityIndicator, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
-import { colors, commonStyles } from '@/styles/commonStyles';
 import { GlassView } from '@/components/GlassView';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { useColorMode } from '@/contexts/ColorModeContext';
 import { AccountSwitcherDropdown } from '@/components/AccountSwitcherDropdown';
+import { spacing, borderRadius, textStyles, safeArea } from '@/theme';
 
-export default function SettingsScreen() {
+export default function HomeownerSettingsScreen() {
   const router = useRouter();
   const { user, profile, logout } = useAuth();
+  const { palette, colorMode, toggleColorMode } = useColorMode();
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [fadeAnim] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
 
   const handleLogout = () => {
     Alert.alert(
@@ -45,302 +56,405 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={commonStyles.container} contentContainerStyle={styles.content}>
+    <ScrollView 
+      style={[styles.container, { backgroundColor: palette.background }]} 
+      contentContainerStyle={styles.content}
+    >
       <AccountSwitcherDropdown
         visible={showAccountSwitcher}
         onClose={() => setShowAccountSwitcher(false)}
       />
 
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Settings</Text>
-      </View>
+      <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
+        <Image
+          source={require('@/assets/images/4d3cae05-9ebb-4fdb-a402-bcee823fa1a2.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Text style={[styles.title, { color: palette.text }]}>Settings</Text>
+      </Animated.View>
 
       {/* Profile Card */}
-      <View style={styles.section}>
-        <GlassView style={styles.profileCard}>
-          <View style={styles.profileHeader}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{user?.name?.[0]?.toUpperCase() || 'H'}</Text>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}>
+        <View style={styles.section}>
+          <GlassView style={styles.profileCard}>
+            <View style={styles.profileHeader}>
+              <View style={[styles.avatar, { backgroundColor: palette.primary }]}>
+                <Text style={[styles.avatarText, { color: palette.text }]}>
+                  {user?.name?.[0]?.toUpperCase() || 'H'}
+                </Text>
+              </View>
+              <View style={styles.profileInfo}>
+                <Text style={[styles.profileName, { color: palette.text }]}>
+                  {user?.name || 'Homeowner'}
+                </Text>
+                <Text style={[styles.profileEmail, { color: palette.textMuted }]}>
+                  {user?.email}
+                </Text>
+                <View style={[styles.badge, { backgroundColor: palette.primary + '20' }]}>
+                  <IconSymbol 
+                    ios_icon_name="house.fill" 
+                    android_material_icon_name="home" 
+                    size={12} 
+                    color={palette.primary} 
+                  />
+                  <Text style={[styles.badgeText, { color: palette.primary }]}>
+                    HOMEOWNER
+                  </Text>
+                </View>
+              </View>
             </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>{user?.name || 'Homeowner'}</Text>
-              <Text style={styles.profileEmail}>{user?.email}</Text>
-              <View style={styles.badge}>
+          </GlassView>
+        </View>
+      </Animated.View>
+
+      {/* Appearance */}
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [25, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Appearance</Text>
+          <GlassView style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <IconSymbol 
+                ios_icon_name={colorMode === 'light' ? 'sun.max.fill' : 'moon.fill'} 
+                android_material_icon_name={colorMode === 'light' ? 'light-mode' : 'dark-mode'} 
+                size={24} 
+                color={palette.primary} 
+              />
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingLabel, { color: palette.text }]}>Dark Mode</Text>
+                <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                  {colorMode === 'dark' ? 'Enabled' : 'Disabled'}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={colorMode === 'dark'}
+              onValueChange={toggleColorMode}
+              trackColor={{ false: palette.inputBackground, true: palette.primary }}
+              thumbColor={palette.text}
+            />
+          </GlassView>
+        </View>
+      </Animated.View>
+
+      {/* Account Switcher */}
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Account</Text>
+          <TouchableOpacity onPress={() => setShowAccountSwitcher(true)}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol 
+                  ios_icon_name="arrow.left.arrow.right" 
+                  android_material_icon_name="swap-horiz" 
+                  size={24} 
+                  color={palette.primary} 
+                />
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Switch Account</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Change between provider and homeowner
+                  </Text>
+                </View>
+              </View>
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+
+      {/* My Homes */}
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Properties</Text>
+          <TouchableOpacity onPress={() => router.push('/(homeowner)/homes')}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
                 <IconSymbol 
                   ios_icon_name="house.fill" 
                   android_material_icon_name="home" 
-                  size={12} 
-                  color={colors.primary} 
+                  size={24} 
+                  color={palette.primary} 
                 />
-                <Text style={styles.badgeText}>HOMEOWNER</Text>
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>My Homes</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Manage your properties
+                  </Text>
+                </View>
               </View>
-            </View>
-          </View>
-        </GlassView>
-      </View>
-
-      {/* Account Switcher */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Account</Text>
-        <TouchableOpacity onPress={() => setShowAccountSwitcher(true)}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="arrow.left.arrow.right" android_material_icon_name="swap-horiz" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Switch Account</Text>
-                <Text style={styles.settingDescription}>Change between provider and homeowner</Text>
-              </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
-
-      {/* Profile */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Profile</Text>
-        <TouchableOpacity onPress={() => router.push('/(homeowner)/profile/edit')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Edit Profile</Text>
-                <Text style={styles.settingDescription}>Update your personal information</Text>
-              </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
-
-      {/* Homes */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Homes</Text>
-        <TouchableOpacity onPress={() => router.push('/(homeowner)/homes/')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="house.fill" android_material_icon_name="home" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Manage Homes</Text>
-                <Text style={styles.settingDescription}>Add or edit your properties</Text>
-              </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
       {/* Payment Methods */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Payment</Text>
-        <TouchableOpacity onPress={() => router.push('/(homeowner)/payment-methods/')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="credit-card" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Payment Methods</Text>
-                <Text style={styles.settingDescription}>Manage your payment options</Text>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Payments</Text>
+          <TouchableOpacity onPress={() => router.push('/(homeowner)/payment-methods')}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol 
+                  ios_icon_name="creditcard.fill" 
+                  android_material_icon_name="payment" 
+                  size={24} 
+                  color={palette.primary} 
+                />
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Payment Methods</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Manage cards and payment options
+                  </Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
-
-      {/* Subscriptions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Subscriptions</Text>
-        <TouchableOpacity onPress={() => router.push('/(homeowner)/subscriptions/')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="repeat.circle.fill" android_material_icon_name="autorenew" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>My Subscriptions</Text>
-                <Text style={styles.settingDescription}>View recurring services</Text>
-              </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
       {/* Notifications */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notifications</Text>
-        <TouchableOpacity onPress={() => router.push('/(homeowner)/notifications/')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Notification Settings</Text>
-                <Text style={styles.settingDescription}>Manage push and email notifications</Text>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Notifications</Text>
+          <TouchableOpacity onPress={() => router.push('/(homeowner)/notifications')}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol 
+                  ios_icon_name="bell.fill" 
+                  android_material_icon_name="notifications" 
+                  size={24} 
+                  color={palette.primary} 
+                />
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Notification Settings</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Manage push and email notifications
+                  </Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
       {/* About and Legal */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About & Legal</Text>
-        <TouchableOpacity onPress={() => Alert.alert('Help & Support', 'Contact us at support@homebase.app')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="questionmark.circle.fill" android_material_icon_name="help" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Help & Support</Text>
-                <Text style={styles.settingDescription}>Get help from our team</Text>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [70, 0] }) }] }}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>About & Legal</Text>
+          
+          <TouchableOpacity onPress={() => Alert.alert('About', 'HomeBase v1.0.0\n\nYour all-in-one home service management platform.')}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol 
+                  ios_icon_name="info.circle.fill" 
+                  android_material_icon_name="info" 
+                  size={24} 
+                  color={palette.primary} 
+                />
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>About HomeBase</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Version and app information
+                  </Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
+            </GlassView>
+          </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => Alert.alert('About', 'HomeBase v1.0.0\n\nYour all-in-one home service management platform.')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="info.circle.fill" android_material_icon_name="info" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>About HomeBase</Text>
-                <Text style={styles.settingDescription}>Version and app information</Text>
+          <TouchableOpacity onPress={() => Alert.alert('Privacy Policy', 'View our privacy policy at homebase.app/privacy')}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol 
+                  ios_icon_name="lock.fill" 
+                  android_material_icon_name="lock" 
+                  size={24} 
+                  color={palette.primary} 
+                />
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Privacy Policy</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    How we protect your data
+                  </Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
+            </GlassView>
+          </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => Alert.alert('Privacy Policy', 'View our privacy policy at homebase.app/privacy')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="lock.fill" android_material_icon_name="lock" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Privacy Policy</Text>
-                <Text style={styles.settingDescription}>How we protect your data</Text>
+          <TouchableOpacity onPress={() => Alert.alert('Terms of Service', 'View our terms at homebase.app/terms')}>
+            <GlassView style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <IconSymbol 
+                  ios_icon_name="doc.text.fill" 
+                  android_material_icon_name="description" 
+                  size={24} 
+                  color={palette.primary} 
+                />
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingLabel, { color: palette.text }]}>Terms of Service</Text>
+                  <Text style={[styles.settingDescription, { color: palette.textMuted }]}>
+                    Legal terms and conditions
+                  </Text>
+                </View>
               </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => Alert.alert('Terms of Service', 'View our terms at homebase.app/terms')}>
-          <GlassView style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="description" size={24} color={colors.primary} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Terms of Service</Text>
-                <Text style={styles.settingDescription}>Legal terms and conditions</Text>
-              </View>
-            </View>
-            <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron-right" size={20} color={colors.textSecondary} />
-          </GlassView>
-        </TouchableOpacity>
-      </View>
+              <IconSymbol 
+                ios_icon_name="chevron.right" 
+                android_material_icon_name="chevron-right" 
+                size={20} 
+                color={palette.textMuted} 
+              />
+            </GlassView>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
       {/* Logout */}
-      <TouchableOpacity 
-        style={styles.logoutButton} 
-        onPress={handleLogout}
-        disabled={isLoggingOut}
-      >
-        {isLoggingOut ? (
-          <ActivityIndicator size="small" color={colors.error} />
-        ) : (
-          <React.Fragment>
-            <IconSymbol ios_icon_name="arrow.right.square.fill" android_material_icon_name="logout" size={20} color={colors.error} />
-            <Text style={styles.logoutText}>Logout</Text>
-          </React.Fragment>
-        )}
-      </TouchableOpacity>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }] }}>
+        <TouchableOpacity 
+          style={[
+            styles.logoutButton,
+            { 
+              backgroundColor: palette.surface,
+              borderColor: palette.error + '40',
+            }
+          ]} 
+          onPress={handleLogout}
+          disabled={isLoggingOut}
+        >
+          {isLoggingOut ? (
+            <ActivityIndicator size="small" color={palette.error} />
+          ) : (
+            <React.Fragment>
+              <IconSymbol 
+                ios_icon_name="arrow.right.square.fill" 
+                android_material_icon_name="logout" 
+                size={20} 
+                color={palette.error} 
+              />
+              <Text style={[styles.logoutText, { color: palette.error }]}>Logout</Text>
+            </React.Fragment>
+          )}
+        </TouchableOpacity>
+      </Animated.View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   content: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 140,
+    paddingTop: safeArea.top,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: safeArea.bottom,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: spacing.xxxl,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    marginBottom: spacing.lg,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: colors.text,
+    ...textStyles.heading,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: spacing.xxl,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 12,
+    ...textStyles.captionBold,
+    marginBottom: spacing.md,
     paddingLeft: 4,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   profileCard: {
-    padding: 20,
+    padding: spacing.xl,
   },
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: spacing.lg,
   },
   avatar: {
     width: 64,
     height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
+    borderRadius: borderRadius.round,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.title,
   },
   profileInfo: {
     flex: 1,
   },
   profileName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.subtitle,
     marginBottom: 4,
   },
   profileEmail: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 10,
+    ...textStyles.caption,
+    marginBottom: spacing.sm,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: colors.primary + '20',
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: borderRadius.sm,
     gap: 6,
   },
   badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary,
+    ...textStyles.smallBold,
     letterSpacing: 0.5,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    marginBottom: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
   },
   settingLeft: {
     flexDirection: 'row',
@@ -352,31 +466,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   settingLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
+    ...textStyles.bodyBold,
     marginBottom: 4,
   },
   settingDescription: {
-    fontSize: 13,
-    color: colors.textSecondary,
+    ...textStyles.caption,
     lineHeight: 18,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.glass,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: spacing.lg,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: colors.error + '40',
-    gap: 8,
-    marginTop: 8,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   logoutText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.error,
+    ...textStyles.bodyBold,
   },
 });

@@ -2,40 +2,43 @@
 import React from 'react';
 import { View, ViewStyle, StyleProp, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { colors } from '@/styles/commonStyles';
+import { useColorMode } from '@/contexts/ColorModeContext';
+import { borderRadius, shadows } from '@/theme';
 
 interface GlassViewProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   intensity?: number;
+  elevated?: boolean;
 }
 
-export function GlassView({ children, style, intensity = 40 }: GlassViewProps) {
+export function GlassView({ children, style, intensity = 40, elevated = false }: GlassViewProps) {
+  const { palette, colorMode } = useColorMode();
+
   return (
     <View
       style={[
         {
-          backgroundColor: colors.glass,
-          borderColor: colors.glassBorder,
+          backgroundColor: palette.glass,
+          borderColor: palette.glassBorder,
           borderWidth: 1,
-          borderRadius: 20,
+          borderRadius: borderRadius.lg,
           overflow: 'hidden',
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.25,
-          shadowRadius: 12,
         },
+        elevated && shadows.md,
         style,
       ]}
     >
       <BlurView 
         intensity={Platform.OS === 'ios' ? intensity : intensity * 1.5} 
-        tint="dark" 
+        tint={colorMode === 'light' ? 'light' : 'dark'}
         style={{ flex: 1 }}
       >
         <View style={{ 
           flex: 1, 
-          backgroundColor: 'rgba(0, 0, 0, 0.35)',
+          backgroundColor: colorMode === 'light' 
+            ? 'rgba(255, 255, 255, 0.3)' 
+            : 'rgba(0, 0, 0, 0.35)',
         }}>
           {children}
         </View>
